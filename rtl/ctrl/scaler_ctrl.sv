@@ -76,9 +76,9 @@ module scaler_ctrl #(
     input  logic              write_error // DDR 写回错误信号
 );
 
-    localparam int SRC_Y_W    = (MAX_SRC_H > 1) ? $clog2(MAX_SRC_H) : 1;
-    localparam int DST_Y_W    = $clog2(MAX_DST_H+1);
-    localparam int LINE_SEL_W = (LINE_NUM > 1) ? $clog2(LINE_NUM) : 1;
+    localparam int SRC_Y_W    = (MAX_SRC_H > 1) ? $clog2(MAX_SRC_H) : 1; // 表示源行号的位宽
+    localparam int DST_Y_W    = $clog2(MAX_DST_H+1); // 表示目标行号的位宽，注意这里是 MAX_DST_H+1，因为可能需要表示 dst_h 这个值本身（当 dst_h == MAX_DST_H 时，dst_h 就是一个合法的行号，用来表示最后一行）
+    localparam int LINE_SEL_W = (LINE_NUM > 1) ? $clog2(LINE_NUM) : 1; // 表示缓存行选择的位宽
 
     typedef enum logic [1:0] {
         S_IDLE,
@@ -177,7 +177,8 @@ module scaler_ctrl #(
         cache_hit0     = 1'b0;
         cache_hit1     = 1'b0;
         cache_hit_sel0 = '0;
-
+        
+        // 
         for (cache_idx_comb = 0; cache_idx_comb < LINE_NUM; cache_idx_comb++) begin
             if (cache_valid_reg[cache_idx_comb] && (cache_y_reg[cache_idx_comb] == line_req_y)) begin
                 cache_hit0     = 1'b1;
