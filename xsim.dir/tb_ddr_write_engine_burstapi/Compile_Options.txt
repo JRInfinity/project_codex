@@ -1,0 +1,1 @@
+"tb_ddr_write_engine" -s "tb_ddr_write_engine_burstapi" --timescale "1ns/1ps" --log "sim_out/ddr_write_engine/xelab_burstapi.log" 

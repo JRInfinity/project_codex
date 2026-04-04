@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/buffer/src_line_buffer.sv" into library work
+INFO: [VRFC 10-311] analyzing module src_line_buffer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_src_line_buffer.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_src_line_buffer

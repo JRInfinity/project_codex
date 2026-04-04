@@ -1,0 +1,29 @@
+{
+  "codex": {
+    "enabled": true,
+    "launchMode": "appId",
+    "appId": "OpenAI.Codex_2p2nqsd0c76g0!App",
+    "exePath": ""
+  },
+  "chrome": {
+    "enabled": true,
+    "exePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "profileDirectory": "Default",
+    "urls": [
+      "https://chatgpt.com/"
+    ]
+  },
+  "vscode": {
+    "enabled": true,
+    "commandPath": "D:\\Program Files\\Microsoft VS Code\\bin\\code.cmd",
+    "targets": [
+      "C:\\Users\\huawei\\Desktop\\project_codex"
+    ]
+  },
+  "documents": {
+    "enabled": true,
+    "openWith": "vscode",
+    "commandPath": "D:\\Program Files\\Microsoft VS Code\\bin\\code.cmd",
+    "paths": []
+  }
+}

@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/buffer/async_word_fifo.sv" into library work
+INFO: [VRFC 10-311] analyzing module async_word_fifo
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_async_word_fifo_xpm.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_async_word_fifo_xpm

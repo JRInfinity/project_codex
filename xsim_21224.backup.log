@@ -1,0 +1,23 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Thu Apr  2 16:11:48 2026
+# Process ID: 21224
+# Current directory: C:/Users/huawei/Desktop/project_codex
+# Command line: xsim.exe -mode tcl -source {xsim.dir/tb_async_word_fifo_xpm_sim/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/xsim.log
+# Journal file: C:/Users/huawei/Desktop/project_codex\xsim.jou
+#-----------------------------------------------------------
+source xsim.dir/tb_async_word_fifo_xpm_sim/xsim_script.tcl
+# xsim {tb_async_word_fifo_xpm_sim} -autoloadwcfg -runall
+Vivado Simulator 2019.2
+Time resolution is 1 ps
+run -all
+Info: [XPM_MEMORY 20-1] MEMORY_PRIMITIVE (0) instructs Vivado Synthesis to choose the memory primitive type. Depending on their values, other XPM_MEMORY parameters may preclude the choice of certain memory primitive types. Review XPM_MEMORY documentation and parameter values to understand any limitations, or set MEMORY_PRIMITIVE to a different value. tb_async_word_fifo_xpm.dut.xpm_fifo_async_inst.gnuram_async_fifo.xpm_fifo_base_inst.gen_sdpram.xpm_memory_base_inst.config_drc
+Time: 1 ps  Iteration: 0  Process: /tb_async_word_fifo_xpm/dut/xpm_fifo_async_inst/gnuram_async_fifo.xpm_fifo_base_inst/gen_sdpram.xpm_memory_base_inst/Initial290_29  File: D:/ProgramFiles/Vivado/2019.2/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv
+Fatal: FIFO should return to empty after draining
+Time: 455 ns  Iteration: 0  Process: /tb_async_word_fifo_xpm/Initial178_114  File: C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_async_word_fifo_xpm.sv
+$finish called at time : 455 ns : File "D:/ProgramFiles/Vivado/2019.2/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv" Line 2463
+exit
+INFO: [Common 17-206] Exiting xsim at Thu Apr  2 16:11:50 2026...

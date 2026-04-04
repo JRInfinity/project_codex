@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/read_cmd_cdc.sv" into library work
+INFO: [VRFC 10-311] analyzing module read_cmd_cdc
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_read_cmd_cdc.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_read_cmd_cdc

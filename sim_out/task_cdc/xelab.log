@@ -1,0 +1,13 @@
+Vivado Simulator 2019.2
+Copyright 1986-1999, 2001-2019 Xilinx, Inc. All Rights Reserved.
+Running: D:/ProgramFiles/Vivado/2019.2/bin/unwrapped/win64.o/xelab.exe tb_task_cdc -s tb_task_cdc_auto --timescale 1ns/1ps --log C:\Users\huawei\Desktop\project_codex\sim_out\task_cdc\xelab.log 
+Multi-threading is on. Using 18 slave threads.
+Starting static elaboration
+Pass Through NonSizing Optimizer
+Completed static elaboration
+Starting simulation data flow analysis
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling module work.task_cdc
+Compiling module work.tb_task_cdc
+Built simulation snapshot tb_task_cdc_auto

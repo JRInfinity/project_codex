@@ -1,0 +1,36 @@
+Vivado Simulator 2019.2
+Copyright 1986-1999, 2001-2019 Xilinx, Inc. All Rights Reserved.
+Running: D:/ProgramFiles/Vivado/2019.2/bin/unwrapped/win64.o/xelab.exe tb_image_geo_top -s tb_image_geo_top_auto --timescale 1ns/1ps --log C:\Users\huawei\Desktop\project_codex\sim_out\image_geo_top\xelab.log 
+Multi-threading is on. Using 18 slave threads.
+Starting static elaboration
+Pass Through NonSizing Optimizer
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'src_w' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:416]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'src_h' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:417]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'dst_w' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:418]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'dst_h' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:419]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'src_w' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:523]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'src_h' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:524]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'dst_w' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:525]
+WARNING: [VRFC 10-3091] actual bit length 16 differs from formal bit length 5 for port 'dst_h' [C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv:526]
+Completed static elaboration
+Starting simulation data flow analysis
+WARNING: [XSIM 43-3980] File "C:/Users/huawei/Desktop/project_codex/rtl/buffer/async_word_fifo.sv" Line 139 : The SystemVerilog feature ": Sensitivity on Class Property, Queue/Associative/Dynamic Array Element, Select expression on a String" is not supported yet for simulation.
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling package work.ddr_axi_pkg
+Compiling module work.taxi_axi_if(ID_W=4)
+Compiling module work.scaler_ctrl(MAX_SRC_W=16,MAX_SRC...
+Compiling module work.read_cmd_cdc
+Compiling module work.status_cdc
+Compiling module work.async_word_fifo(ALMOST_FULL_MARG...
+Compiling module work.axi_burst_reader(BURST_MAX_LEN=1...
+Compiling module work.pixel_unpacker_default
+Compiling module work.ddr_read_engine_top(BURST_MAX_LE...
+Compiling module work.ddr_read_engine(BURST_MAX_LEN=16...
+Compiling module work.src_line_buffer(MAX_SRC_W=16)
+Compiling module work.scale_core_nearest(MAX_SRC_W=16,...
+Compiling module work.row_out_buffer(MAX_DST_W=16)
+Compiling module work.ddr_write_engine(AXI_ID_W=4)(m_a...
+Compiling module work.image_geo_top(MAX_SRC_W=16,MAX_S...
+Compiling module work.tb_image_geo_top
+Built simulation snapshot tb_image_geo_top_auto

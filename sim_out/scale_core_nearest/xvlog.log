@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/core/scale_core_nearest.sv" into library work
+INFO: [VRFC 10-311] analyzing module scale_core_nearest
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_scale_core_nearest.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_scale_core_nearest

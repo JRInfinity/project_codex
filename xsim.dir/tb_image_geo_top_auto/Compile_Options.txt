@@ -1,0 +1,1 @@
+"tb_image_geo_top" -s "tb_image_geo_top_auto" --timescale "1ns/1ps" --log "C:\Users\huawei\Desktop\project_codex\sim_out\image_geo_top\xelab.log" 

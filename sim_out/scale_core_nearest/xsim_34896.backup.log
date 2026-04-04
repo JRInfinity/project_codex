@@ -1,0 +1,33 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Thu Apr  2 15:39:45 2026
+# Process ID: 34896
+# Current directory: C:/Users/huawei/Desktop/project_codex
+# Command line: xsim.exe -log C:\Users\huawei\Desktop\project_codex\sim_out\scale_core_nearest\xsim.log -mode tcl -source {xsim.dir/tb_scale_core_nearest_auto/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/sim_out/scale_core_nearest/xsim.log
+# Journal file: C:/Users/huawei/Desktop/project_codex\xsim.jou
+#-----------------------------------------------------------
+source xsim.dir/tb_scale_core_nearest_auto/xsim_script.tcl
+# xsim {tb_scale_core_nearest_auto} -wdb {C:/Users/huawei/Desktop/project_codex/sim_out/scale_core_nearest/tb_scale_core_nearest.wdb} -autoloadwcfg -tclbatch {C:/Users/huawei/Desktop/project_codex/tools/xsim_runall_log_waves.tcl} -onfinish quit
+Vivado Simulator 2019.2
+Time resolution is 1 ps
+source C:/Users/huawei/Desktop/project_codex/tools/xsim_runall_log_waves.tcl
+## log_wave -recursive /*
+## if {[info exists ::env(XSIM_VCD_FILE)] && $::env(XSIM_VCD_FILE) ne ""} {
+##     open_vcd $::env(XSIM_VCD_FILE)
+##     log_vcd [get_objects -r /*]
+## }
+INFO: HDL object /tb_scale_core_nearest/src_img is an unpacked array. VCD does not support unpacked array type according to IEEE LRM 1800-2009, section21.7.5.
+INFO: HDL object /tb_scale_core_nearest/observed is an unpacked array. VCD does not support unpacked array type according to IEEE LRM 1800-2009, section21.7.5.
+## run all
+Running identity_4x4
+Running downscale_6x5_to_3x2
+Running upscale_3x3_to_5x5
+Running mixed_7x4_to_5x3
+Running invalid_zero_src_w
+tb_scale_core_nearest completed
+$finish called at time : 3455 ns : File "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_scale_core_nearest.sv" Line 378
+exit 0
+INFO: [Common 17-206] Exiting xsim at Thu Apr  2 15:39:49 2026...

@@ -1,0 +1,21 @@
+Vivado Simulator 2019.2
+Copyright 1986-1999, 2001-2019 Xilinx, Inc. All Rights Reserved.
+Running: D:/ProgramFiles/Vivado/2019.2/bin/unwrapped/win64.o/xelab.exe tb_ddr_read_engine -s tb_ddr_read_engine_pixelapi --timescale 1ns/1ps --log sim_out/ddr_read_engine/xelab_pixelapi.log 
+Multi-threading is on. Using 18 slave threads.
+Starting static elaboration
+Pass Through NonSizing Optimizer
+Completed static elaboration
+Starting simulation data flow analysis
+WARNING: [XSIM 43-3980] File "C:/Users/huawei/Desktop/project_codex/rtl/buffer/async_word_fifo.sv" Line 139 : The SystemVerilog feature ": Sensitivity on Class Property, Queue/Associative/Dynamic Array Element, Select expression on a String" is not supported yet for simulation.
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling package work.ddr_axi_pkg
+Compiling module work.taxi_axi_if(ID_W=4)
+Compiling module work.task_cdc
+Compiling module work.result_cdc
+Compiling module work.async_word_fifo(DEPTH=32,ALMOST_...
+Compiling module work.axi_burst_reader(BURST_MAX_LEN=8...
+Compiling module work.pixel_unpacker_default
+Compiling module work.ddr_read_engine(BURST_MAX_LEN=8,...
+Compiling module work.tb_ddr_read_engine
+Built simulation snapshot tb_ddr_read_engine_pixelapi

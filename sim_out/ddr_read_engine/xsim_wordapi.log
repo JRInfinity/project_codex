@@ -1,0 +1,27 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Fri Apr  3 11:17:14 2026
+# Process ID: 9108
+# Current directory: C:/Users/huawei/Desktop/project_codex
+# Command line: xsim.exe -log sim_out/ddr_read_engine/xsim_wordapi.log -mode tcl -source {xsim.dir/tb_ddr_read_engine_wordapi/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/sim_out/ddr_read_engine/xsim_wordapi.log
+# Journal file: C:/Users/huawei/Desktop/project_codex\xsim.jou
+#-----------------------------------------------------------
+source xsim.dir/tb_ddr_read_engine_wordapi/xsim_script.tcl
+# xsim {tb_ddr_read_engine_wordapi} -autoloadwcfg -runall -onfinish quit
+Vivado Simulator 2019.2
+Time resolution is 1 ps
+run -all
+Running aligned_whole_word
+Running unaligned_partial
+Running multi_burst
+Running split_4kb_boundary
+Running backpressure
+Running rresp_error
+Running rlast_error
+tb_ddr_read_engine completed
+$finish called at time : 4365 ns : File "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_ddr_read_engine.sv" Line 331
+exit 0
+INFO: [Common 17-206] Exiting xsim at Fri Apr  3 11:17:24 2026...

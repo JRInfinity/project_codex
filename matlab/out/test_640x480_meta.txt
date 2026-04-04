@@ -1,0 +1,13 @@
+width=640
+height=480
+pixel_bits=8
+pixel_range=0..255
+pattern=checkerboard
+storage=row-major
+bytes_per_pixel=1
+total_bytes=307200
+png_path=out/test_640x480.png
+preview_path=out/test_640x480_preview.png
+bin_path=out/test_640x480.bin
+coe_path=out/test_640x480.coe
+ddr_offset_formula=addr_base + y * width + x

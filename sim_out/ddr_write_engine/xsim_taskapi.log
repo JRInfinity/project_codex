@@ -1,0 +1,26 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Fri Apr  3 10:15:56 2026
+# Process ID: 2724
+# Current directory: C:/Users/huawei/Desktop/project_codex
+# Command line: xsim.exe -log sim_out/ddr_write_engine/xsim_taskapi.log -mode tcl -source {xsim.dir/tb_ddr_write_engine_taskapi/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/sim_out/ddr_write_engine/xsim_taskapi.log
+# Journal file: C:/Users/huawei/Desktop/project_codex\xsim.jou
+#-----------------------------------------------------------
+source xsim.dir/tb_ddr_write_engine_taskapi/xsim_script.tcl
+# xsim {tb_ddr_write_engine_taskapi} -autoloadwcfg -runall -onfinish quit
+Vivado Simulator 2019.2
+Time resolution is 1 ps
+run -all
+Running aligned_whole_word
+Running unaligned_partial
+Running multi_burst
+Running split_4kb_boundary
+Running input_backpressure
+Running bresp_error
+tb_ddr_write_engine completed
+$finish called at time : 4605 ns : File "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_ddr_write_engine.sv" Line 292
+exit 0
+INFO: [Common 17-206] Exiting xsim at Fri Apr  3 10:16:01 2026...

@@ -1,0 +1,12 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Fri Apr  3 10:33:22 2026
+# Process ID: 23396
+# Current directory: C:/Users/huawei/Desktop/project_codex
+# Command line: xsim.exe -log sim_out/ddr_write_engine/xsim_burstapi.log -mode tcl -source {xsim.dir/tb_ddr_write_engine_burstapi/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/sim_out/ddr_write_engine/xsim_burstapi.log
+# Journal file: C:/Users/huawei/Desktop/project_codex\xsim.jou
+#-------------------------------------------------------sourcsource xsim.dir/tb_ddr_write_engine_burstapi/xsim_scriprun -all
+ -all

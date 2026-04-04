@@ -1,0 +1,30 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/axi/rtl/taxi_axi_if.sv" into library work
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/ddr_axi_pkg.sv" into library work
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_reader.sv" into library work
+INFO: [VRFC 10-311] analyzing module axi_burst_reader
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_writer.sv" into library work
+INFO: [VRFC 10-311] analyzing module axi_burst_writer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/task_cdc.sv" into library work
+INFO: [VRFC 10-311] analyzing module task_cdc
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/result_cdc.sv" into library work
+INFO: [VRFC 10-311] analyzing module result_cdc
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/ddr_read_engine.sv" into library work
+INFO: [VRFC 10-311] analyzing module ddr_read_engine
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/ddr_write_engine.sv" into library work
+INFO: [VRFC 10-311] analyzing module ddr_write_engine
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/buffer/async_word_fifo.sv" into library work
+INFO: [VRFC 10-311] analyzing module async_word_fifo
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/buffer/src_line_buffer.sv" into library work
+INFO: [VRFC 10-311] analyzing module src_line_buffer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/buffer/row_out_buffer.sv" into library work
+INFO: [VRFC 10-311] analyzing module row_out_buffer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/core/pixel_unpacker.sv" into library work
+INFO: [VRFC 10-311] analyzing module pixel_unpacker
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/core/pixel_packer.sv" into library work
+INFO: [VRFC 10-311] analyzing module pixel_packer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/core/scale_core_bilinear.sv" into library work
+INFO: [VRFC 10-311] analyzing module scale_core_bilinear
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/ctrl/scaler_ctrl.sv" into library work
+INFO: [VRFC 10-311] analyzing module scaler_ctrl
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/image_geo_top.sv" into library work
+INFO: [VRFC 10-311] analyzing module image_geo_top

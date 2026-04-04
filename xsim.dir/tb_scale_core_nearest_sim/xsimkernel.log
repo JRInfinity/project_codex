@@ -1,0 +1,7 @@
+Running: xsim.dir/tb_scale_core_nearest_sim/xsimk.exe -runall -simmode gui -wdb tb_scale_core_nearest_sim.wdb -simrunnum 0 -socket 39126
+Design successfully loaded
+Design Loading Memory Usage: 7844 KB (Peak: 7844 KB)
+Design Loading CPU Usage: 0 ms
+Simulation completed
+Simulation Memory Usage: 9184 KB (Peak: 9184 KB)
+Simulation CPU Usage: 0 ms

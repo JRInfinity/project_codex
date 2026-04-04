@@ -1,0 +1,13 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Sat Apr  4 13:23:49 2026
+# Process ID: 22860
+# Current directory: C:/Users/huawei/Desktop/project_codex/sim_out/tb_image_geo_top
+# Command line: xsim.exe -mode tcl -source {xsim.dir/tb_image_geo_top_sim/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/sim_out/tb_image_geo_top/xsim.log
+# Journal file: C:/Users/huawei/Desktop/project_codex/sim_out/tb_image_geo_top\xsim.jou
+#-----------------------------------------------------------
+source xsim.dir/tb_image_geo_top_sim/xsim_script.tcl
+run -all

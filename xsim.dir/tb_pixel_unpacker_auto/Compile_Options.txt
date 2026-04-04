@@ -1,0 +1,1 @@
+"tb_pixel_unpacker" -s "tb_pixel_unpacker_auto" --timescale "1ns/1ps" --log "C:\Users\huawei\Desktop\project_codex\sim_out\pixel_unpacker\xelab.log" 

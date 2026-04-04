@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/axi/task_cdc.sv" into library work
+INFO: [VRFC 10-311] analyzing module task_cdc
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_task_cdc.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_task_cdc

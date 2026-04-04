@@ -1,0 +1,1 @@
+"tb_ddr_read_engine" -s "tb_ddr_read_engine_dbg" --timescale "1ns/1ps" 

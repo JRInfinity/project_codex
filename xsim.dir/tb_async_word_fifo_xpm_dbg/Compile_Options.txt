@@ -1,0 +1,1 @@
+"tb_async_word_fifo_xpm" -s "tb_async_word_fifo_xpm_dbg" --timescale "1ns/1ps" 

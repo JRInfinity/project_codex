@@ -1,0 +1,23 @@
+#-----------------------------------------------------------
+# xsim v2019.2 (64-bit)
+# SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
+# IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
+# Start of session at: Fri Apr  3 09:37:38 2026
+# Process ID: 26756
+# Current directory: C:/Users/huawei/Desktop/project_codex
+# Command line: xsim.exe -log sim_out/ddr_write_engine/xsim_debug.log -mode tcl -source {xsim.dir/tb_ddr_write_engine_dbg/xsim_script.tcl}
+# Log file: C:/Users/huawei/Desktop/project_codex/sim_out/ddr_write_engine/xsim_debug.log
+# Journal file: C:/Users/huawei/Desktop/project_codex\xsim.jou
+#-----------------------------------------------------------
+source xsim.dir/tb_ddr_write_engine_dbg/xsim_script.tcl
+# xsim {tb_ddr_write_engine_dbg} -autoloadwcfg -runall -onfinish quit
+Vivado Simulator 2019.2
+Time resolution is 1 ps
+run -all
+Running aligned_whole_word
+Running unaligned_partial
+Fatal: Timeout in unaligned_partial busy=1 in_idx=19 awvalid=0 wvalid=0 bready=0 bvalid=0
+Time: 60775 ns  Iteration: 0  Process: /tb_ddr_write_engine/expect_success  File: C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_ddr_write_engine.sv
+$finish called at time : 60775 ns
+exit 0
+INFO: [Common 17-206] Exiting xsim at Fri Apr  3 09:37:43 2026...
