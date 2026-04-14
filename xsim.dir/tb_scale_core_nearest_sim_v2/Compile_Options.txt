@@ -1,1 +1,0 @@
-"tb_scale_core_nearest" -s "tb_scale_core_nearest_sim_v2" 

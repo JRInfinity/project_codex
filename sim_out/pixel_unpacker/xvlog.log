@@ -1,4 +1,0 @@
-INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/core/pixel_unpacker.sv" into library work
-INFO: [VRFC 10-311] analyzing module pixel_unpacker
-INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_pixel_unpacker.sv" into library work
-INFO: [VRFC 10-311] analyzing module tb_pixel_unpacker

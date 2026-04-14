@@ -1,1 +1,0 @@
-"tb_read_cmd_cdc" -s "tb_read_cmd_cdc_auto" --timescale "1ns/1ps" --log "C:\Users\huawei\Desktop\project_codex\sim_out\read_cmd_cdc\xelab.log" 

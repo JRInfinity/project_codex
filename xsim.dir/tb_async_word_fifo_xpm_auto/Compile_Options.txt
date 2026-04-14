@@ -1,1 +1,0 @@
-"tb_async_word_fifo_xpm" -s "tb_async_word_fifo_xpm_auto" --timescale "1ns/1ps" --log "C:\Users\huawei\Desktop\project_codex\sim_out\async_word_fifo\xelab.log" 

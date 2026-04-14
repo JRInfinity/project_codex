@@ -1,7 +1,0 @@
-Running: xsim.dir/tb_ddr_write_engine_pixelapi/xsimk.exe -runall -simmode gui -wdb tb_ddr_write_engine_pixelapi.wdb -simrunnum 0 -socket 41322
-Design successfully loaded
-Design Loading Memory Usage: 8600 KB (Peak: 8600 KB)
-Design Loading CPU Usage: 15 ms
-Simulation completed
-Simulation Memory Usage: 9944 KB (Peak: 9944 KB)
-Simulation CPU Usage: 30 ms

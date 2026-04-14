@@ -1,7 +1,0 @@
-Running: xsim.dir/tb_image_geo_top_sim/xsimk.exe -runall -simmode gui -wdb tb_image_geo_top_sim.wdb -simrunnum 0 -socket 52761
-Design successfully loaded
-Design Loading Memory Usage: 8112 KB (Peak: 8112 KB)
-Design Loading CPU Usage: 0 ms
-Simulation completed
-Simulation Memory Usage: 9700 KB (Peak: 9700 KB)
-Simulation CPU Usage: 0 ms

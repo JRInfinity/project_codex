@@ -1,7 +1,0 @@
-Running: xsim.dir/tb_pixel_unpacker_auto/xsimk.exe -runall -simmode gui -wdb tb_pixel_unpacker_auto.wdb -simrunnum 0 -socket 45052
-Design successfully loaded
-Design Loading Memory Usage: 7824 KB (Peak: 7824 KB)
-Design Loading CPU Usage: 15 ms
-Simulation completed
-Simulation Memory Usage: 9100 KB (Peak: 9100 KB)
-Simulation CPU Usage: 30 ms

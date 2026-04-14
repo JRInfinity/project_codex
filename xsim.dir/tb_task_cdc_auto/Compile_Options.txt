@@ -1,1 +1,0 @@
-"tb_task_cdc" -s "tb_task_cdc_auto" --timescale "1ns/1ps" --log "C:\Users\huawei\Desktop\project_codex\sim_out\task_cdc\xelab.log" 

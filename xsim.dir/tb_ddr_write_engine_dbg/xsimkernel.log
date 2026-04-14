@@ -1,7 +1,0 @@
-Running: xsim.dir/tb_ddr_write_engine_dbg/xsimk.exe -runall -simmode gui -wdb tb_ddr_write_engine_dbg.wdb -simrunnum 0 -socket 15050
-Design successfully loaded
-Design Loading Memory Usage: 7904 KB (Peak: 7904 KB)
-Design Loading CPU Usage: 0 ms
-Simulation completed
-Simulation Memory Usage: 9284 KB (Peak: 9284 KB)
-Simulation CPU Usage: 0 ms

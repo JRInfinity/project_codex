@@ -1,1 +1,0 @@
-"tb_ddr_write_engine" -s "tb_ddr_write_engine_dbg" --timescale "1ns/1ps" --log "sim_out/ddr_write_engine/xelab_debug.log" 

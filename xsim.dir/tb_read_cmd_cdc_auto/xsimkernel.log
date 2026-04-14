@@ -1,7 +1,0 @@
-Running: xsim.dir/tb_read_cmd_cdc_auto/xsimk.exe -runall -simmode gui -wdb tb_read_cmd_cdc_auto.wdb -simrunnum 0 -socket 6732
-Design successfully loaded
-Design Loading Memory Usage: 8688 KB (Peak: 8688 KB)
-Design Loading CPU Usage: 15 ms
-Simulation completed
-Simulation Memory Usage: 9340 KB (Peak: 9340 KB)
-Simulation CPU Usage: 31 ms

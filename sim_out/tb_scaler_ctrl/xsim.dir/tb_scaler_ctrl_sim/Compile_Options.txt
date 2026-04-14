@@ -1,1 +1,0 @@
-"tb_scaler_ctrl" -s "tb_scaler_ctrl_sim" 

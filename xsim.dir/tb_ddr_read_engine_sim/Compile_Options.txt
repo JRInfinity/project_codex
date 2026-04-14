@@ -1,1 +1,0 @@
---timescale "1ns/1ps" "work.tb_ddr_read_engine" -s "tb_ddr_read_engine_sim" 

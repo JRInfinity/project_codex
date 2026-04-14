@@ -1,4 +1,0 @@
-INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/ctrl/scaler_ctrl.sv" into library work
-INFO: [VRFC 10-311] analyzing module scaler_ctrl
-INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_scaler_ctrl.sv" into library work
-INFO: [VRFC 10-311] analyzing module tb_scaler_ctrl
