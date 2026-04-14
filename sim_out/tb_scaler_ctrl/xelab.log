@@ -1,6 +1,6 @@
 Vivado Simulator 2019.2
 Copyright 1986-1999, 2001-2019 Xilinx, Inc. All Rights Reserved.
-Running: D:/ProgramFiles/Vivado/2019.2/bin/unwrapped/win64.o/xelab.exe tb_scaler_ctrl -s tb_scaler_ctrl_sim 
+Running: D:/ProgramFiles/Vivado/2019.2/bin/unwrapped/win64.o/xelab.exe tb_scaler_ctrl -s tb_scaler_ctrl_auto --timescale 1ns/1ps --log C:\Users\huawei\Desktop\project_codex\sim_out\tb_scaler_ctrl\xelab.log 
 Multi-threading is on. Using 18 slave threads.
 Starting static elaboration
 Pass Through NonSizing Optimizer
@@ -10,4 +10,4 @@ Completed simulation data flow analysis
 Time Resolution for simulation is 1ps
 Compiling module work.scaler_ctrl(MAX_SRC_W=16,MAX_SRC...
 Compiling module work.tb_scaler_ctrl
-Built simulation snapshot tb_scaler_ctrl_sim
+Built simulation snapshot tb_scaler_ctrl_auto

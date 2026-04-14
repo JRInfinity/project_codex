@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 // 模块职责：
 // 1. 将一次任务请求从 src_clk 域传到 dst_clk 域
 // 2. 使用 req/ack toggle 握手保证多比特载荷跨时钟域稳定
@@ -18,16 +20,16 @@ module task_cdc #(
     input  logic              task_ready_dst
 );
 
-    logic              req_toggle_src_reg;
-    logic              ack_toggle_dst_reg;
-    logic              src_busy_reg;
-    logic [ADDR_W-1:0] task_addr_hold_reg;
-    logic [31:0]       task_byte_count_hold_reg;
-    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync1_reg;
-    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync2_reg;
-    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync1_reg;
-    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync2_reg;
-    logic req_toggle_dst_seen_reg;
+    logic              req_toggle_src_reg; // 源时钟域的请求 toggle 寄存器
+    logic              ack_toggle_dst_reg; // 目标时钟域的应答 toggle 寄存器
+    logic              src_busy_reg;       // 源时钟域的忙标志
+    logic [ADDR_W-1:0] task_addr_hold_reg; // 源时钟域的任务地址保持寄存器
+    logic [31:0]       task_byte_count_hold_reg; // 源时钟域的任务字节计数保持寄存器
+    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync1_reg; // 同步到源时钟域的应答 toggle 寄存器 1
+    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync2_reg; // 同步到源时钟域的应答 toggle 寄存器 2
+    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync1_reg; // 同步到目标时钟域的请求 toggle 寄存器 1
+    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync2_reg; // 同步到目标时钟域的请求 toggle 寄存器 2
+    logic req_toggle_dst_seen_reg; // 目标时钟域已看到的请求 toggle 值
 
     assign task_ready_src = !src_busy_reg;
 

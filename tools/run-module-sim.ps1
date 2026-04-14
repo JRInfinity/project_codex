@@ -77,6 +77,30 @@ $targets = @{
             "rtl/sim/tb_src_line_buffer.sv"
         )
     }
+    "src_tile_cache" = @{
+        Top = "tb_src_tile_cache"
+        Snapshot = "tb_src_tile_cache_auto"
+        Sources = @(
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/sim/tb_src_tile_cache.sv"
+        )
+    }
+    "src_tile_cache_prefetch" = @{
+        Top = "tb_src_tile_cache_prefetch"
+        Snapshot = "tb_src_tile_cache_prefetch_auto"
+        Sources = @(
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/sim/tb_src_tile_cache_prefetch.sv"
+        )
+    }
+    "scaler_ctrl" = @{
+        Top = "tb_scaler_ctrl"
+        Snapshot = "tb_scaler_ctrl_auto"
+        Sources = @(
+            "rtl/ctrl/scaler_ctrl.sv",
+            "rtl/sim/tb_scaler_ctrl.sv"
+        )
+    }
     "ddr_read_engine" = @{
         Top = "tb_ddr_read_engine"
         Snapshot = "tb_ddr_read_engine_auto"
@@ -98,6 +122,9 @@ $targets = @{
         Sources = @(
             "axi/rtl/taxi_axi_if.sv",
             "rtl/axi/ddr_axi_pkg.sv",
+            "rtl/axi/task_cdc.sv",
+            "rtl/axi/result_cdc.sv",
+            "rtl/buffer/async_word_fifo.sv",
             "rtl/core/pixel_packer.sv",
             "rtl/axi/axi_burst_writer.sv",
             "rtl/axi/ddr_write_engine.sv",
@@ -112,17 +139,68 @@ $targets = @{
             "rtl/axi/ddr_axi_pkg.sv",
             "rtl/axi/task_cdc.sv",
             "rtl/axi/result_cdc.sv",
+            "rtl/axi/frame_config_cdc.sv",
+            "rtl/axi/cache_stats_cdc.sv",
             "rtl/axi/axi_burst_reader.sv",
             "rtl/buffer/async_word_fifo.sv",
             "rtl/core/pixel_unpacker.sv",
             "rtl/axi/ddr_read_engine.sv",
             "rtl/axi/ddr_write_engine.sv",
-            "rtl/buffer/src_line_buffer.sv",
+            "rtl/buffer/src_tile_cache.sv",
             "rtl/buffer/row_out_buffer.sv",
-            "rtl/core/scale_core_nearest.sv",
+            "rtl/core/row_advance_unit.sv",
+            "rtl/core/rotate_core_bilinear.sv",
             "rtl/ctrl/scaler_ctrl.sv",
-            "rtl/image_geo_top.sv",
+            "rtl/top/image_geo_top.sv",
             "rtl/sim/tb_image_geo_top.sv"
+        )
+    }
+    "image_geo_top_prefetch_stress" = @{
+        Top = "tb_image_geo_top_prefetch_stress"
+        Snapshot = "tb_image_geo_top_prefetch_stress_auto"
+        Sources = @(
+            "axi/rtl/taxi_axi_if.sv",
+            "rtl/axi/ddr_axi_pkg.sv",
+            "rtl/axi/task_cdc.sv",
+            "rtl/axi/result_cdc.sv",
+            "rtl/axi/frame_config_cdc.sv",
+            "rtl/axi/cache_stats_cdc.sv",
+            "rtl/axi/axi_burst_reader.sv",
+            "rtl/buffer/async_word_fifo.sv",
+            "rtl/core/pixel_unpacker.sv",
+            "rtl/axi/ddr_read_engine.sv",
+            "rtl/axi/ddr_write_engine.sv",
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/buffer/row_out_buffer.sv",
+            "rtl/core/row_advance_unit.sv",
+            "rtl/core/rotate_core_bilinear.sv",
+            "rtl/ctrl/scaler_ctrl.sv",
+            "rtl/top/image_geo_top.sv",
+            "rtl/sim/tb_image_geo_top_prefetch_stress.sv"
+        )
+    }
+    "image_geo_top_perf_sweep" = @{
+        Top = "tb_image_geo_top_perf_sweep"
+        Snapshot = "tb_image_geo_top_perf_sweep_auto"
+        Sources = @(
+            "axi/rtl/taxi_axi_if.sv",
+            "rtl/axi/ddr_axi_pkg.sv",
+            "rtl/axi/task_cdc.sv",
+            "rtl/axi/result_cdc.sv",
+            "rtl/axi/frame_config_cdc.sv",
+            "rtl/axi/cache_stats_cdc.sv",
+            "rtl/axi/axi_burst_reader.sv",
+            "rtl/buffer/async_word_fifo.sv",
+            "rtl/core/pixel_unpacker.sv",
+            "rtl/axi/ddr_read_engine.sv",
+            "rtl/axi/ddr_write_engine.sv",
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/buffer/row_out_buffer.sv",
+            "rtl/core/row_advance_unit.sv",
+            "rtl/core/rotate_core_bilinear.sv",
+            "rtl/ctrl/scaler_ctrl.sv",
+            "rtl/top/image_geo_top.sv",
+            "rtl/sim/tb_image_geo_top_perf_sweep.sv"
         )
     }
 }
@@ -190,7 +268,7 @@ function Resolve-TargetNames {
 
     if ($Name -eq "all") {
         # all 会展开成脚本当前维护的全部目标。
-        return @("scale_core_nearest", "pixel_unpacker", "task_cdc", "result_cdc", "async_word_fifo", "src_line_buffer", "ddr_read_engine", "ddr_write_engine", "image_geo_top")
+        return @("scale_core_nearest", "pixel_unpacker", "task_cdc", "result_cdc", "async_word_fifo", "src_line_buffer", "src_tile_cache", "src_tile_cache_prefetch", "scaler_ctrl", "ddr_read_engine", "ddr_write_engine", "image_geo_top", "image_geo_top_prefetch_stress", "image_geo_top_perf_sweep")
     }
 
     if (-not $targets.ContainsKey($Name)) {

@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_scale_core_nearest.md。
 
+// Keep tb_scale_core_nearest.md in sync
 module tb_scale_core_nearest;
 
     // 测试目标：

@@ -1,7 +1,7 @@
-Running: xsim.dir/tb_async_word_fifo_xpm_auto/xsimk.exe -runall -simmode gui -wdb tb_async_word_fifo_xpm_auto.wdb -simrunnum 0 -socket 9667
+Running: xsim.dir/tb_async_word_fifo_xpm_auto/xsimk.exe -runall -simmode gui -wdb tb_async_word_fifo_xpm_auto.wdb -simrunnum 0 -socket 45067
 Design successfully loaded
-Design Loading Memory Usage: 8056 KB (Peak: 8056 KB)
+Design Loading Memory Usage: 7832 KB (Peak: 7832 KB)
 Design Loading CPU Usage: 15 ms
 Simulation completed
-Simulation Memory Usage: 9472 KB (Peak: 9472 KB)
+Simulation Memory Usage: 9208 KB (Peak: 9208 KB)
 Simulation CPU Usage: 15 ms

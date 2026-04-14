@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_ddr_read_engine.md。
 
+// Keep tb_ddr_read_engine.md in sync
 module tb_ddr_read_engine;
 
     // 测试目标：

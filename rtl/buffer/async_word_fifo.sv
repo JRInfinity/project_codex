@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 // 模块职责：
 // 1. 在写时钟域和读时钟域之间搬运完整数据字
 // 2. 综合时优先实例化 Xilinx `xpm_fifo_async`

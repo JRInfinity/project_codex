@@ -6,7 +6,7 @@ Starting static elaboration
 Pass Through NonSizing Optimizer
 Completed static elaboration
 Starting simulation data flow analysis
-WARNING: [XSIM 43-3980] File "C:/Users/huawei/Desktop/project_codex/rtl/buffer/async_word_fifo.sv" Line 94 : The SystemVerilog feature ": Sensitivity on Class Property, Queue/Associative/Dynamic Array Element, Select expression on a String" is not supported yet for simulation.
+WARNING: [XSIM 43-3980] File "C:/Users/huawei/Desktop/project_codex/rtl/buffer/async_word_fifo.sv" Line 139 : The SystemVerilog feature ": Sensitivity on Class Property, Queue/Associative/Dynamic Array Element, Select expression on a String" is not supported yet for simulation.
 Completed simulation data flow analysis
 Time Resolution for simulation is 1ps
 Compiling module work.async_word_fifo(DEPTH=16)

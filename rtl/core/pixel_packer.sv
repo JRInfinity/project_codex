@@ -2,6 +2,8 @@
 // 1. 将 PIXEL_W 位宽的像素流打包成 DATA_W 位宽的数据字
 // 2. 根据 task_addr 指定的首地址偏移填充首个数据字
 // 3. 在最后一个数据字输出与有效字节匹配的 strobe 掩码
+`timescale 1ns/1ps
+
 module pixel_packer #(
     parameter int DATA_W  = 32, // 输出数据字位宽
     parameter int ADDR_W  = 32, // 地址位宽

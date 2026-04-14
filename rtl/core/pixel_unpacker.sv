@@ -3,6 +3,8 @@
 // 2. 根据 task_addr 指定的首地址偏移跳过首个数据字中的无效字节
 // 3. 根据 task_byte_count 裁掉最后一个数据字中的无效尾部字节
 // 4. 按像素流接口输出有效字节，并在任务结束时给出完成或错误脉冲
+`timescale 1ns/1ps
+
 module pixel_unpacker #(
     parameter int DATA_W  = 32, // 上游 FIFO 数据位宽
     parameter int ADDR_W  = 32, // 地址位宽

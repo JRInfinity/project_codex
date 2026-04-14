@@ -97,6 +97,13 @@ module image_geo_top #(
     localparam logic [AXIL_ADDR_W-1:0] REG_SRC_SIZE_ADDR   = 12'h014;
     localparam logic [AXIL_ADDR_W-1:0] REG_DST_SIZE_ADDR   = 12'h018;
     localparam logic [AXIL_ADDR_W-1:0] REG_STATUS_ADDR     = 12'h01C;
+    localparam logic [AXIL_ADDR_W-1:0] REG_ROT_SIN_ADDR    = 12'h020; // 旋转角度的正弦值，采用 Q16 定点格式表示，范围 [-1, 1) 映射到 [-65536, 65535] 之间。
+    localparam logic [AXIL_ADDR_W-1:0] REG_ROT_COS_ADDR    = 12'h024; // 旋转角度的余弦值，采用 Q16 定点格式表示，范围 [-1, 1) 映射到 [-65536, 65535] 之间。
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_READS_ADDR = 12'h028;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_MISSES_ADDR = 12'h02C;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_PREFETCH_ADDR = 12'h030;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_PREFETCH_HIT_ADDR = 12'h034;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_CTRL_ADDR = 12'h038;
 
     localparam int LINE_SEL_W   = (LINE_NUM > 1) ? $clog2(LINE_NUM) : 1;
     localparam int SRC_X_W      = $clog2(MAX_SRC_W+1);
@@ -106,6 +113,8 @@ module image_geo_top #(
     localparam int CORE_SRC_Y_W = (MAX_SRC_H > 1) ? $clog2(MAX_SRC_H) : 1;
 
     logic sys_rst;
+    logic axi_sys_rst;
+    logic core_sys_rst;
 
     logic axil_aw_hold_valid_reg;
     logic axil_w_hold_valid_reg;
@@ -125,46 +134,88 @@ module image_geo_top #(
     logic [15:0]           reg_src_h;
     logic [15:0]           reg_dst_w;
     logic [15:0]           reg_dst_h;
+    logic signed [31:0]    reg_rot_sin_q16;
+    logic signed [31:0]    reg_rot_cos_q16;
+    logic                  reg_cache_prefetch_en;
     logic                  reg_irq_en;
     logic                  start_pulse_reg;
     logic                  done_sticky_reg;
     logic                  error_sticky_reg;
-    logic                  ctrl_busy;
-    logic                  ctrl_done;
-    logic                  ctrl_error;
+    logic [AXI_ADDR_W-1:0] core_src_base_addr;
+    logic [AXI_ADDR_W-1:0] core_dst_base_addr;
+    logic [AXI_ADDR_W-1:0] core_src_stride;
+    logic [AXI_ADDR_W-1:0] core_dst_stride;
+    logic [15:0]           core_src_w_cfg;
+    logic [15:0]           core_src_h_cfg;
+    logic [15:0]           core_dst_w_cfg;
+    logic [15:0]           core_dst_h_cfg;
+    logic signed [31:0]    core_rot_sin_q16;
+    logic signed [31:0]    core_rot_cos_q16;
+    logic                  core_cache_prefetch_en;
+    logic                  core_cfg_valid;
+    logic                  core_cfg_ready;
+    logic                  cfg_ready_axi;
+    logic                  ctrl_busy_core;
+    logic                  ctrl_done_core;
+    logic                  ctrl_error_core;
+    logic                  ctrl_busy_axi_reg;
+    logic                  ctrl_result_valid_axi;
+    logic                  ctrl_result_done_axi;
+    logic                  ctrl_result_error_axi;
 
-    logic                  read_start;
-    logic [AXI_ADDR_W-1:0] read_addr;
-    logic [31:0]           read_byte_count;
-    logic                  read_busy;
-    logic                  read_done;
-    logic                  read_error;
+    logic                  read_busy_core;
+    logic                  read_done_core;
+    logic                  read_error_core;
     logic [PIXEL_W-1:0]    read_out_data;
     logic                  read_out_valid;
     logic                  read_out_ready;
-
-    logic                  lb_load_start;
-    logic [LINE_SEL_W-1:0] lb_load_sel;
-    logic [SRC_X_W-1:0]    lb_load_pixel_count;
-    logic                  lb_load_busy;
-    logic                  lb_load_done;
-    logic                  lb_load_error;
 
     logic                  core_start;
     logic                  core_busy;
     logic                  core_done;
     logic                  core_error;
-    logic                  line_req_valid;
-    logic [CORE_SRC_Y_W-1:0] line_req_y_raw;
-    logic                  line_req_ready;
-    logic [LINE_SEL_W-1:0] line_req_sel;
-    logic                  pixel_req_valid;
-    logic [$clog2(MAX_SRC_W)-1:0] pixel_req_x;
-    logic [PIXEL_W-1:0]    pixel_rsp_data;
-    logic                  pixel_rsp_valid;
+    logic                  src_cache_error;
+    logic                  cache_read_start;
+    logic [AXI_ADDR_W-1:0] cache_read_addr;
+    logic [31:0]           cache_read_byte_count;
+    logic                  cache_read_busy;
+    logic                  cache_read_done;
+    logic                  cache_read_error;
+    logic                  sample_req_valid;
+    logic                  sample_req_ready;
+    logic [(MAX_SRC_W > 1 ? $clog2(MAX_SRC_W) : 1)-1:0] sample_x0;
+    logic [(MAX_SRC_H > 1 ? $clog2(MAX_SRC_H) : 1)-1:0] sample_y0;
+    logic [(MAX_SRC_W > 1 ? $clog2(MAX_SRC_W) : 1)-1:0] sample_x1;
+    logic [(MAX_SRC_H > 1 ? $clog2(MAX_SRC_H) : 1)-1:0] sample_y1;
+    logic [PIXEL_W-1:0]    cache_sample_p00;
+    logic [PIXEL_W-1:0]    cache_sample_p01;
+    logic [PIXEL_W-1:0]    cache_sample_p10;
+    logic [PIXEL_W-1:0]    cache_sample_p11;
+    logic                  cache_sample_rsp_valid;
+    logic [PIXEL_W-1:0]    sample_p00;
+    logic [PIXEL_W-1:0]    sample_p01;
+    logic [PIXEL_W-1:0]    sample_p10;
+    logic [PIXEL_W-1:0]    sample_p11;
+    logic                  sample_rsp_valid;
+    logic signed [1:0]     sample_scan_dir_x;
+    logic signed [1:0]     sample_scan_dir_y;
+    logic                  sample_scan_dir_valid;
+    logic [31:0]           src_cache_stat_read_starts;
+    logic [31:0]           src_cache_stat_misses;
+    logic [31:0]           src_cache_stat_prefetch_starts;
+    logic [31:0]           src_cache_stat_prefetch_hits;
+    logic [31:0]           src_cache_stat_read_starts_axi;
+    logic [31:0]           src_cache_stat_misses_axi;
+    logic [31:0]           src_cache_stat_prefetch_starts_axi;
+    logic [31:0]           src_cache_stat_prefetch_hits_axi;
     logic                  core_pix_valid;
     logic                  core_pix_ready;
     logic [PIXEL_W-1:0]    core_pix_data;
+    logic                  core_pix_pipe_valid_reg;
+    logic [PIXEL_W-1:0]    core_pix_pipe_data_reg;
+    logic                  row_in_valid;
+    logic [PIXEL_W-1:0]    row_in_data;
+    logic                  row_in_ready;
     logic                  core_row_done;
 
     logic                           row_start;
@@ -184,10 +235,6 @@ module image_geo_top #(
     logic                  write_busy;
     logic                  write_done;
     logic                  write_error;
-    logic [PIXEL_W-1:0]    lb_rd0_data;
-    logic                  lb_rd0_data_valid;
-
-    logic [CORE_SRC_Y_W-1:0] line_req_y_clamped;
     logic                    unused_signals;
 
     taxi_axi_if #(
@@ -209,7 +256,9 @@ module image_geo_top #(
     end
 
     // 系统复位由 AXI 侧低有效复位翻转得到，控制寄存器与主数据链路共用该时钟域。
-    assign sys_rst = ~axi_rstn;
+    assign axi_sys_rst = ~axi_rstn;
+    assign core_sys_rst = ~core_rstn;
+    assign sys_rst = axi_sys_rst || core_sys_rst;
 
     assign s_axi_ctrl_awready = !axil_aw_hold_valid_reg && !s_axi_ctrl_bvalid;
     assign s_axi_ctrl_wready  = !axil_w_hold_valid_reg && !s_axi_ctrl_bvalid;
@@ -246,11 +295,32 @@ module image_geo_top #(
                 axil_rdata_next[31:16] = reg_dst_h;
             end
             REG_STATUS_ADDR: begin
-                axil_rdata_next[0] = ctrl_busy;
+                axil_rdata_next[0] = ctrl_busy_axi_reg;
                 axil_rdata_next[1] = done_sticky_reg;
                 axil_rdata_next[2] = error_sticky_reg;
-                axil_rdata_next[8] = read_busy;
-                axil_rdata_next[9] = write_busy;
+                axil_rdata_next[8] = 1'b0;
+                axil_rdata_next[9] = 1'b0;
+            end
+            REG_ROT_SIN_ADDR: begin
+                axil_rdata_next = reg_rot_sin_q16;
+            end
+            REG_ROT_COS_ADDR: begin
+                axil_rdata_next = reg_rot_cos_q16;
+            end
+            REG_CACHE_READS_ADDR: begin
+                axil_rdata_next = src_cache_stat_read_starts_axi;
+            end
+            REG_CACHE_MISSES_ADDR: begin
+                axil_rdata_next = src_cache_stat_misses_axi;
+            end
+            REG_CACHE_PREFETCH_ADDR: begin
+                axil_rdata_next = src_cache_stat_prefetch_starts_axi;
+            end
+            REG_CACHE_PREFETCH_HIT_ADDR: begin
+                axil_rdata_next = src_cache_stat_prefetch_hits_axi;
+            end
+            REG_CACHE_CTRL_ADDR: begin
+                axil_rdata_next[0] = reg_cache_prefetch_en;
             end
             default: begin
                 axil_read_addr_hit = 1'b0;
@@ -263,7 +333,7 @@ module image_geo_top #(
 
     // AXI-Lite 写通路：缓存 AW/W 通道后统一提交寄存器写入，并维护读写响应握手。
     always_ff @(posedge axi_clk) begin
-        if (sys_rst) begin
+        if (axi_sys_rst) begin
             axil_aw_hold_valid_reg <= 1'b0;
             axil_w_hold_valid_reg  <= 1'b0;
             axil_ar_hold_valid_reg <= 1'b0;
@@ -285,20 +355,27 @@ module image_geo_top #(
             reg_src_h              <= '0;
             reg_dst_w              <= '0;
             reg_dst_h              <= '0;
+            reg_rot_sin_q16        <= '0;
+            reg_rot_cos_q16        <= 32'sh0001_0000;
+            reg_cache_prefetch_en  <= 1'b1;
             reg_irq_en             <= 1'b0;
             start_pulse_reg        <= 1'b0;
             done_sticky_reg        <= 1'b0;
             error_sticky_reg       <= 1'b0;
+            ctrl_busy_axi_reg      <= 1'b0;
         end else begin
             write_fire = axil_aw_hold_valid_reg && axil_w_hold_valid_reg && !s_axi_ctrl_bvalid;
             read_fire  = axil_ar_hold_valid_reg && !s_axi_ctrl_rvalid;
             start_pulse_reg <= 1'b0;
 
-            if (ctrl_done) begin
+            if (ctrl_result_done_axi) begin
                 done_sticky_reg <= 1'b1;
             end
-            if (ctrl_error) begin
+            if (ctrl_result_error_axi) begin
                 error_sticky_reg <= 1'b1;
+            end
+            if (ctrl_result_valid_axi) begin
+                ctrl_busy_axi_reg <= 1'b0;
             end
 
             if (s_axi_ctrl_awready && s_axi_ctrl_awvalid) begin
@@ -327,10 +404,11 @@ module image_geo_top #(
                     REG_CTRL_ADDR: begin
                         if (axil_wstrb_reg[0]) begin
                             reg_irq_en <= axil_wdata_reg[1];
-                            if (axil_wdata_reg[0] && !ctrl_busy) begin
+                            if (axil_wdata_reg[0] && !ctrl_busy_axi_reg && cfg_ready_axi) begin
                                 start_pulse_reg  <= 1'b1;
                                 done_sticky_reg  <= 1'b0;
                                 error_sticky_reg <= 1'b0;
+                                ctrl_busy_axi_reg <= 1'b1;
                             end
                         end
                     end
@@ -376,6 +454,21 @@ module image_geo_top #(
                             if (axil_wdata_reg[2]) error_sticky_reg <= 1'b0;
                         end
                     end
+                    REG_ROT_SIN_ADDR: begin
+                        if (axil_wstrb_reg[0]) reg_rot_sin_q16[7:0]   <= axil_wdata_reg[7:0];
+                        if (axil_wstrb_reg[1]) reg_rot_sin_q16[15:8]  <= axil_wdata_reg[15:8];
+                        if (axil_wstrb_reg[2]) reg_rot_sin_q16[23:16] <= axil_wdata_reg[23:16];
+                        if (axil_wstrb_reg[3]) reg_rot_sin_q16[31:24] <= axil_wdata_reg[31:24];
+                    end
+                    REG_ROT_COS_ADDR: begin
+                        if (axil_wstrb_reg[0]) reg_rot_cos_q16[7:0]   <= axil_wdata_reg[7:0];
+                        if (axil_wstrb_reg[1]) reg_rot_cos_q16[15:8]  <= axil_wdata_reg[15:8];
+                        if (axil_wstrb_reg[2]) reg_rot_cos_q16[23:16] <= axil_wdata_reg[23:16];
+                        if (axil_wstrb_reg[3]) reg_rot_cos_q16[31:24] <= axil_wdata_reg[31:24];
+                    end
+                    REG_CACHE_CTRL_ADDR: begin
+                        if (axil_wstrb_reg[0]) reg_cache_prefetch_en <= axil_wdata_reg[0];
+                    end
                     default: begin
                         s_axi_ctrl_bresp <= AXI_RESP_SLVERR;
                     end
@@ -401,7 +494,71 @@ module image_geo_top #(
 
     assign irq = reg_irq_en && (done_sticky_reg || error_sticky_reg);
 
-    assign line_req_y_clamped = line_req_y_raw;
+    frame_config_cdc #(
+        .ADDR_W(AXI_ADDR_W)
+    ) u_frame_config_cdc (
+        .src_clk(axi_clk),
+        .sys_rst(sys_rst),
+        .cfg_valid_src(start_pulse_reg),
+        .src_base_addr_src(reg_src_base_addr),
+        .dst_base_addr_src(reg_dst_base_addr),
+        .src_stride_src(reg_src_stride),
+        .dst_stride_src(reg_dst_stride),
+        .src_w_src(reg_src_w),
+        .src_h_src(reg_src_h),
+        .dst_w_src(reg_dst_w),
+        .dst_h_src(reg_dst_h),
+        .rot_sin_q16_src(reg_rot_sin_q16),
+        .rot_cos_q16_src(reg_rot_cos_q16),
+        .cache_prefetch_en_src(reg_cache_prefetch_en),
+        .cfg_ready_src(cfg_ready_axi),
+        .dst_clk(core_clk),
+        .cfg_valid_dst(core_cfg_valid),
+        .src_base_addr_dst(core_src_base_addr),
+        .dst_base_addr_dst(core_dst_base_addr),
+        .src_stride_dst(core_src_stride),
+        .dst_stride_dst(core_dst_stride),
+        .src_w_dst(core_src_w_cfg),
+        .src_h_dst(core_src_h_cfg),
+        .dst_w_dst(core_dst_w_cfg),
+        .dst_h_dst(core_dst_h_cfg),
+        .rot_sin_q16_dst(core_rot_sin_q16),
+        .rot_cos_q16_dst(core_rot_cos_q16),
+        .cache_prefetch_en_dst(core_cache_prefetch_en),
+        .cfg_ready_dst(core_cfg_ready)
+    );
+
+    result_cdc u_ctrl_result_cdc (
+        .src_clk(core_clk),
+        .sys_rst(sys_rst),
+        .result_valid_src(ctrl_done_core || ctrl_error_core),
+        .result_done_src(ctrl_done_core),
+        .result_error_src(ctrl_error_core),
+        .result_ready_src(),
+        .dst_clk(axi_clk),
+        .result_valid_dst(ctrl_result_valid_axi),
+        .result_done_dst(ctrl_result_done_axi),
+        .result_error_dst(ctrl_result_error_axi)
+    );
+
+    cache_stats_cdc u_cache_stats_cdc (
+        .src_clk(core_clk),
+        .sys_rst(sys_rst),
+        .stats_valid_src(ctrl_done_core || ctrl_error_core),
+        .read_starts_src(src_cache_stat_read_starts),
+        .misses_src(src_cache_stat_misses),
+        .prefetch_starts_src(src_cache_stat_prefetch_starts),
+        .prefetch_hits_src(src_cache_stat_prefetch_hits),
+        .stats_ready_src(),
+        .dst_clk(axi_clk),
+        .read_starts_dst(src_cache_stat_read_starts_axi),
+        .misses_dst(src_cache_stat_misses_axi),
+        .prefetch_starts_dst(src_cache_stat_prefetch_starts_axi),
+        .prefetch_hits_dst(src_cache_stat_prefetch_hits_axi)
+    );
+
+    assign core_cfg_ready = !ctrl_busy_core;
+
 
     // 缩放链路主控：负责源行缓存预装、core 启动和结果写回时序。
     scaler_ctrl #(
@@ -412,48 +569,33 @@ module image_geo_top #(
         .MAX_DST_H(MAX_DST_H),
         .LINE_NUM(LINE_NUM)
     ) u_scaler_ctrl (
-        .clk(axi_clk),
-        .sys_rst(sys_rst),
-        .start(start_pulse_reg),
-        .src_base_addr(reg_src_base_addr),
-        .dst_base_addr(reg_dst_base_addr),
-        .src_stride(reg_src_stride),
-        .dst_stride(reg_dst_stride),
-        .src_w(reg_src_w[SRC_X_W-1:0]),
-        .src_h(reg_src_h[SRC_Y_W-1:0]),
-        .dst_w(reg_dst_w[DST_X_W-1:0]),
-        .dst_h(reg_dst_h[DST_Y_W-1:0]),
-        .busy(ctrl_busy),
-        .done(ctrl_done),
-        .error(ctrl_error),
-        .read_start(read_start),
-        .read_addr(read_addr),
-        .read_byte_count(read_byte_count),
-        .read_busy(read_busy),
-        .read_done(read_done),
-        .read_error(read_error),
-        .lb_load_start(lb_load_start),
-        .lb_load_sel(lb_load_sel),
-        .lb_load_pixel_count(lb_load_pixel_count),
-        .lb_load_busy(lb_load_busy),
-        .lb_load_done(lb_load_done),
-        .lb_load_error(lb_load_error),
+        .clk(core_clk),
+        .sys_rst(core_sys_rst),
+        .start(core_cfg_valid),
+        .src_base_addr(core_src_base_addr),
+        .dst_base_addr(core_dst_base_addr),
+        .src_stride(core_src_stride),
+        .dst_stride(core_dst_stride),
+        .src_w(core_src_w_cfg[SRC_X_W-1:0]),
+        .src_h(core_src_h_cfg[SRC_Y_W-1:0]),
+        .dst_w(core_dst_w_cfg[DST_X_W-1:0]),
+        .dst_h(core_dst_h_cfg[DST_Y_W-1:0]),
+        .busy(ctrl_busy_core),
+        .done(ctrl_done_core),
+        .error(ctrl_error_core),
         .core_start(core_start),
         .core_busy(core_busy),
         .core_done(core_done),
         .core_error(core_error),
-        .line_req_valid(line_req_valid),
-        .line_req_y(line_req_y_clamped),
-        .line_req_ready(line_req_ready),
-        .line_req_sel(line_req_sel),
         .row_done(core_row_done),
-        .row_start(row_start),
-        .row_pixel_count(row_pixel_count),
-        .row_busy(row_busy),
-        .row_done_buf(row_done_fill),
-        .row_error(row_error),
-        .row_out_start(row_out_start),
-        .row_out_done(row_out_done),
+        .wb_start(row_start),
+        .wb_pixel_count(row_pixel_count),
+        .wb_busy(row_busy),
+        .wb_done_buf(row_done_fill),
+        .wb_error(row_error),
+        .wb_out_start(row_out_start),
+        .wb_out_done(row_out_done),
+
         .write_start(write_start),
         .write_addr(write_addr),
         .write_byte_count(write_byte_count),
@@ -463,6 +605,57 @@ module image_geo_top #(
     );
 
     // 主数据链路依次连接 DDR 读取、源行缓存、bilinear core、行缓冲和 DDR 写回。
+    src_tile_cache #(
+        .PIXEL_W(PIXEL_W),
+        .ADDR_W(AXI_ADDR_W),
+        .MAX_SRC_W(MAX_SRC_W),
+        .MAX_SRC_H(MAX_SRC_H),
+        .TILE_W(16),
+        .TILE_H(16),
+        .TILE_NUM(4)
+    ) u_src_tile_cache (
+        .clk(core_clk),
+        .sys_rst(core_sys_rst),
+        .start(core_cfg_valid),
+        .src_base_addr(core_src_base_addr),
+        .src_stride(core_src_stride),
+        .src_w(core_src_w_cfg[SRC_X_W-1:0]),
+        .src_h(core_src_h_cfg[SRC_Y_W-1:0]),
+        .prefetch_enable(core_cache_prefetch_en),
+        .scan_dir_x(sample_scan_dir_x),
+        .scan_dir_y(sample_scan_dir_y),
+        .scan_dir_valid(sample_scan_dir_valid),
+        .busy(read_busy_core),
+        .error(src_cache_error),
+        .read_start(cache_read_start),
+        .read_addr(cache_read_addr),
+        .read_byte_count(cache_read_byte_count),
+        .read_busy(cache_read_busy),
+        .read_done(cache_read_done),
+        .read_error(cache_read_error),
+        .in_data(read_out_data),
+        .in_valid(read_out_valid),
+        .in_ready(read_out_ready),
+        .sample_req_valid(sample_req_valid),
+        .sample_x0(sample_x0),
+        .sample_y0(sample_y0),
+        .sample_x1(sample_x1),
+        .sample_y1(sample_y1),
+        .sample_req_ready(sample_req_ready),
+        .sample_p00(cache_sample_p00),
+        .sample_p01(cache_sample_p01),
+        .sample_p10(cache_sample_p10),
+        .sample_p11(cache_sample_p11),
+        .sample_rsp_valid(cache_sample_rsp_valid),
+        .stat_read_starts(src_cache_stat_read_starts),
+        .stat_misses(src_cache_stat_misses),
+        .stat_prefetch_starts(src_cache_stat_prefetch_starts),
+        .stat_prefetch_hits(src_cache_stat_prefetch_hits)
+    );
+
+    assign read_error_core = src_cache_error;
+    assign read_done_core  = 1'b0;
+
     ddr_read_engine #(
         .ADDR_W(AXI_ADDR_W),
         .PIXEL_W(PIXEL_W),
@@ -473,76 +666,54 @@ module image_geo_top #(
         .MAX_OUTSTANDING_BEATS(16)
     ) u_ddr_read_engine (
         .axi_clk(axi_clk),
-        .core_clk(axi_clk),
+        .core_clk(core_clk),
         .sys_rst(sys_rst),
-        .task_start(read_start),
-        .task_addr(read_addr),
-        .task_byte_count(read_byte_count),
-        .task_busy(read_busy),
-        .task_done(read_done),
-        .task_error(read_error),
+        .task_start(cache_read_start),
+        .task_addr(cache_read_addr),
+        .task_byte_count(cache_read_byte_count),
+        .task_busy(cache_read_busy),
+        .task_done(cache_read_done),
+        .task_error(cache_read_error),
         .out_data(read_out_data),
         .out_valid(read_out_valid),
         .out_ready(read_out_ready),
         .m_axi_rd(m_axi_rd_if)
     );
 
-    src_line_buffer #(
-        .PIXEL_W(PIXEL_W),
-        .MAX_SRC_W(MAX_SRC_W),
-        .LINE_NUM(LINE_NUM)
-    ) u_src_line_buffer (
-        .clk(axi_clk),
-        .sys_rst(sys_rst),
-        .load_start(lb_load_start),
-        .load_line_sel(lb_load_sel),
-        .load_pixel_count(lb_load_pixel_count),
-        .load_busy(lb_load_busy),
-        .load_done(lb_load_done),
-        .load_error(lb_load_error),
-        .in_data(read_out_data),
-        .in_valid(read_out_valid),
-        .in_ready(read_out_ready),
-        .rd0_req_valid(pixel_req_valid),
-        .rd0_line_sel(line_req_sel),
-        .rd0_x(pixel_req_x),
-        .rd0_data(lb_rd0_data),
-        .rd0_data_valid(lb_rd0_data_valid),
-        .rd1_req_valid(pixel_req_valid),
-        .rd1_line_sel(line_req_sel ^ 1'b1),
-        .rd1_x(pixel_req_x),
-        .rd1_data(pixel_rsp_data),
-        .rd1_data_valid(pixel_rsp_valid)
-    );
-
-    scale_core_bilinear #(
+    rotate_core_bilinear #(
         .PIXEL_W(PIXEL_W),
         .MAX_SRC_W(MAX_SRC_W),
         .MAX_SRC_H(MAX_SRC_H),
         .MAX_DST_W(MAX_DST_W),
         .MAX_DST_H(MAX_DST_H),
-        .LINE_NUM(LINE_NUM)
-    ) u_scale_core_bilinear (
-        .clk(axi_clk),
-        .rst(sys_rst),
+        .COORD_W(36)
+    ) u_rotate_core_bilinear (
+        .clk(core_clk),
+        .rst(core_sys_rst),
         .start(core_start),
-        .src_w(reg_src_w[SRC_X_W-1:0]),
-        .src_h(reg_src_h[SRC_Y_W-1:0]),
-        .dst_w(reg_dst_w[DST_X_W-1:0]),
-        .dst_h(reg_dst_h[DST_Y_W-1:0]),
+        .src_w(core_src_w_cfg[SRC_X_W-1:0]),
+        .src_h(core_src_h_cfg[SRC_Y_W-1:0]),
+        .dst_w(core_dst_w_cfg[DST_X_W-1:0]),
+        .dst_h(core_dst_h_cfg[DST_Y_W-1:0]),
+        .angle_cos_q16(core_rot_cos_q16),
+        .angle_sin_q16(core_rot_sin_q16),
         .busy(core_busy),
         .done(core_done),
         .error(core_error),
-        .line_req_valid(line_req_valid),
-        .line_req_y(line_req_y_raw),
-        .line_req_ready(line_req_ready),
-        .line_req_sel(line_req_sel),
-        .pixel_req_valid(pixel_req_valid),
-        .pixel_req_x(pixel_req_x),
-        .rd0_rsp_data(lb_rd0_data),
-        .rd0_rsp_valid(lb_rd0_data_valid),
-        .rd1_rsp_data(pixel_rsp_data),
-        .rd1_rsp_valid(pixel_rsp_valid),
+        .sample_req_valid(sample_req_valid),
+        .sample_x0(sample_x0),
+        .sample_y0(sample_y0),
+        .sample_x1(sample_x1),
+        .sample_y1(sample_y1),
+        .sample_req_ready(sample_req_ready),
+        .sample_p00(sample_p00),
+        .sample_p01(sample_p01),
+        .sample_p10(sample_p10),
+        .sample_p11(sample_p11),
+        .sample_rsp_valid(sample_rsp_valid),
+        .scan_dir_x(sample_scan_dir_x),
+        .scan_dir_y(sample_scan_dir_y),
+        .scan_dir_valid(sample_scan_dir_valid),
         .pix_data(core_pix_data),
         .pix_valid(core_pix_valid),
         .pix_ready(core_pix_ready),
@@ -553,16 +724,16 @@ module image_geo_top #(
         .PIXEL_W(PIXEL_W),
         .MAX_DST_W(MAX_DST_W)
     ) u_row_out_buffer (
-        .clk(axi_clk),
-        .sys_rst(sys_rst),
+        .clk(core_clk),
+        .sys_rst(core_sys_rst),
         .row_start(row_start),
         .row_pixel_count(row_pixel_count),
         .row_busy(row_busy),
         .row_done(row_done_fill),
         .row_error(row_error),
-        .in_data(core_pix_data),
-        .in_valid(core_pix_valid),
-        .in_ready(core_pix_ready),
+        .in_data(row_in_data),
+        .in_valid(row_in_valid),
+        .in_ready(row_in_ready),
         .out_start(row_out_start),
         .out_data(row_out_data),
         .out_valid(row_out_valid),
@@ -570,13 +741,45 @@ module image_geo_top #(
         .out_done(row_out_done)
     );
 
+    assign row_in_data  = core_pix_pipe_data_reg;
+    assign row_in_valid = core_pix_pipe_valid_reg;
+    assign core_pix_ready = !core_pix_pipe_valid_reg || row_in_ready;
+
+    always_ff @(posedge core_clk) begin
+        if (core_sys_rst) begin
+            sample_p00 <= '0;
+            sample_p01 <= '0;
+            sample_p10 <= '0;
+            sample_p11 <= '0;
+            sample_rsp_valid <= 1'b0;
+            core_pix_pipe_valid_reg <= 1'b0;
+            core_pix_pipe_data_reg  <= '0;
+        end else begin
+            sample_rsp_valid <= cache_sample_rsp_valid;
+            if (cache_sample_rsp_valid) begin
+                sample_p00 <= cache_sample_p00;
+                sample_p01 <= cache_sample_p01;
+                sample_p10 <= cache_sample_p10;
+                sample_p11 <= cache_sample_p11;
+            end
+
+            if (!core_pix_pipe_valid_reg || core_pix_ready) begin
+                core_pix_pipe_valid_reg <= core_pix_valid;
+                if (core_pix_valid) begin
+                    core_pix_pipe_data_reg <= core_pix_data;
+                end
+            end
+        end
+    end
+
     ddr_write_engine #(
         .DATA_W(AXI_DATA_W),
         .ADDR_W(AXI_ADDR_W),
         .PIXEL_W(PIXEL_W),
         .AXI_ID_W(AXI_ID_W)
     ) u_ddr_write_engine (
-        .clk(axi_clk),
+        .axi_clk(axi_clk),
+        .core_clk(core_clk),
         .sys_rst(sys_rst),
         .task_start(write_start),
         .task_addr(write_addr),
@@ -633,7 +836,15 @@ module image_geo_top #(
     assign m_axi_wr_if.bvalid  = m_axi_wr_bvalid;
     assign m_axi_wr_bready     = m_axi_wr_if.bready;
 
-    assign unused_signals = &{1'b0, core_clk, core_rstn, s_axi_ctrl_awprot, s_axi_ctrl_arprot};
+    assign unused_signals = &{
+        1'b0,
+        s_axi_ctrl_awprot,
+        s_axi_ctrl_arprot,
+        read_busy_core,
+        read_done_core,
+        read_error_core,
+        core_rstn
+    };
 
 endmodule
 

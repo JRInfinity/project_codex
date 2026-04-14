@@ -1,9 +1,7 @@
-// 模块职责：
-// 1. 在 axi_clk 域接收一次 DDR 读任务
-// 2. 按 AXI 约束将请求拆分为不跨 4KB 边界的 INCR 突发
-// 3. 一边发起 AR/R 传输，一边把完整 DATA_W 数据字写入下游 FIFO
-// 4. 汇总完成、响应错误和 FIFO 溢出状态并上报结果
+`timescale 1ns/1ps
+
 import ddr_axi_pkg::*;
+
 module axi_burst_reader #(
     parameter int DATA_W                  = 32,
     parameter int ADDR_W                  = 32,
@@ -13,22 +11,22 @@ module axi_burst_reader #(
     parameter int MAX_OUTSTANDING_BURSTS  = 4,
     parameter int MAX_OUTSTANDING_BEATS   = 32
 ) (
-    input  logic              axi_clk,          // AXI 读时钟
-    input  logic              sys_rst,          // 高有效复位
-    input  logic              task_valid,       // 新读任务有效
-    output logic              task_ready,       // 当前可接受新读任务
-    input  logic [ADDR_W-1:0] task_addr,        // 读任务起始地址
-    input  logic [31:0]       task_byte_count,  // 读任务总字节数
-    output logic              word_valid,       // 返回 word 有效
-    output logic [DATA_W-1:0] word_data,        // 返回的整 word 数据
-    input  logic              word_ready,       // 下游准备好接收一个 word
-    input  logic              word_almost_full, // 下游缓冲接近满
-    input  logic [$clog2(FIFO_DEPTH_WORDS+1)-1:0] word_count, // 下游当前缓存的 word 数
-    output logic              result_valid,     // 任务结果有效
-    output logic              result_done,      // 任务结果为成功完成
-    output logic              result_error,     // 任务结果为错误结束
-    input  logic              result_ready,     // 上层接受当前结果
-    taxi_axi_if.rd_mst        m_axi_rd          // AXI 读主接口
+    input  logic              axi_clk,
+    input  logic              sys_rst,
+    input  logic              task_valid,
+    output logic              task_ready,
+    input  logic [ADDR_W-1:0] task_addr,
+    input  logic [31:0]       task_byte_count,
+    output logic              word_valid,
+    output logic [DATA_W-1:0] word_data,
+    input  logic              word_ready,
+    input  logic              word_almost_full,
+    input  logic [$clog2(FIFO_DEPTH_WORDS+1)-1:0] word_count,
+    output logic              result_valid,
+    output logic              result_done,
+    output logic              result_error,
+    input  logic              result_ready,
+    taxi_axi_if.rd_mst        m_axi_rd
 );
 
     localparam int BYTE_W           = DATA_W / 8;
@@ -36,14 +34,9 @@ module axi_burst_reader #(
     localparam int COUNT_W          = 33;
     localparam int BURST_COUNT_W    = (BURST_MAX_LEN > 1) ? $clog2(BURST_MAX_LEN + 1) : 1;
     localparam int BURST_FIFO_PTR_W = (MAX_OUTSTANDING_BURSTS > 1) ? $clog2(MAX_OUTSTANDING_BURSTS) : 1;
+    localparam int WORDS_PER_4KB    = 4096 / BYTE_W;
     localparam logic [2:0] AXI_SIZE = $clog2(BYTE_W);
 
-    // 主状态机：
-    // - S_IDLE 等待命令
-    // - S_ACTIVE 允许持续发 AR 并接 R
-    // - S_DRAIN 已发完所有 AR，仅等待余下返回数据
-    // - S_ERROR 出错后排空已在途数据
-    // - S_DONE 等待状态被上层取走
     typedef enum logic [2:0] {
         S_IDLE,
         S_ACTIVE,
@@ -52,44 +45,54 @@ module axi_burst_reader #(
         S_DONE
     } state_t;
 
-    state_t state_reg; // 当前状态
+    (* fsm_encoding = "sequential" *) state_t state_reg;
 
-    logic [ADDR_W-1:0] aligned_start_addr_reg; // 对齐后的任务起始地址
-
-    // 计数器统一扩成 33 位，确保 ceil((offset + byte_count) / BYTE_W) 可表示。
-    logic [COUNT_W-1:0] words_total_to_fetch_reg; // 本任务总共要抓取多少个 word
-    logic [COUNT_W-1:0] words_requested_reg;      // 已经通过 AR 请求出去多少个 word
-    logic [COUNT_W-1:0] words_received_reg;       // 已经从 R 通道收到多少个 word
-    logic [COUNT_W-1:0] beats_inflight_reg;       // 当前仍在途的 beat 数
-    logic [COUNT_W-1:0] bursts_inflight_reg;      // 当前仍在途的 burst 数
-
-    logic               error_latched_reg;   // 已经检测到致命错误并锁存
-    logic               result_pending_reg;  // 有一笔结果等待上层取走
-    logic               result_done_reg;     // 等待上层取走的结果为完成
-    logic               result_error_reg;    // 等待上层取走的结果为错误
+    logic [ADDR_W-1:0] aligned_start_addr_reg;
+    logic [COUNT_W-1:0] words_total_to_fetch_reg;
+    logic [COUNT_W-1:0] words_requested_reg;
+    logic [ADDR_W-1:0] next_issue_addr_reg;
+    logic [COUNT_W-1:0] words_request_remaining_reg;
+    logic [COUNT_W-1:0] next_issue_words_to_4kb_reg;
+    logic [COUNT_W-1:0] words_received_reg;
+    logic [COUNT_W-1:0] beats_inflight_reg;
+    logic [COUNT_W-1:0] bursts_inflight_reg;
+    logic               issue_seed_valid_reg;
+    logic               issue_gate_valid_reg;
+    logic [ADDR_W-1:0]  issue_gate_addr_reg;
+    logic [COUNT_W-1:0] issue_gate_words_remaining_reg;
+    logic               issue_plan_valid_reg;
+    logic [ADDR_W-1:0]  issue_plan_addr_reg;
+    logic [COUNT_W-1:0] issue_plan_words_remaining_reg;
+    logic               issue_calc_valid_reg;
+    logic [ADDR_W-1:0]  issue_calc_addr_reg;
+    logic [COUNT_W-1:0] issue_calc_words_remaining_reg;
+    logic [COUNT_W-1:0] issue_calc_words_to_4kb_reg;
+    logic               issue_prep_valid_reg;
+    logic [ADDR_W-1:0]  issue_prep_addr_reg;
+    logic [COUNT_W-1:0] issue_prep_beats_reg;
+    logic               issue_commit_valid_reg;
+    logic [COUNT_W-1:0] issue_commit_beats_reg;
+    logic               error_latched_reg;
+    logic               result_pending_reg;
+    logic               result_done_reg;
+    logic               result_error_reg;
 
     logic [BURST_COUNT_W-1:0] burst_beats_q [0:MAX_OUTSTANDING_BURSTS-1];
     logic [BURST_FIFO_PTR_W-1:0] burst_head_reg;
     logic [BURST_FIFO_PTR_W-1:0] burst_tail_reg;
     logic [BURST_FIFO_PTR_W:0]   burst_count_reg;
 
-    logic [ADDR_W-1:0] next_burst_addr_calc;
     logic [COUNT_W-1:0] task_addr_offset_calc;
     logic [COUNT_W-1:0] task_words_total_calc;
-    logic [COUNT_W-1:0] words_remaining_calc;
-    logic [COUNT_W-1:0] bytes_to_4kb_calc;
-    logic [COUNT_W-1:0] words_to_4kb_calc;
-    logic [COUNT_W-1:0] word_count_ext;
-    logic [COUNT_W-1:0] fifo_reserved_words_calc;
-    logic [COUNT_W-1:0] fifo_space_calc;
     logic [COUNT_W-1:0] next_burst_beats_calc;
     logic [COUNT_W-1:0] next_burst_beats_ext_calc;
+    logic [COUNT_W-1:0] beats_credit_reg;
+    logic [COUNT_W-1:0] beats_credit_calc;
     logic               can_issue_ar_calc;
     logic               expected_rlast;
     logic               ar_fire;
     logic               r_fire;
 
-    // 环形队列指针自增，用来记录每个在途 burst 还剩多少 beat。
     function automatic logic [BURST_FIFO_PTR_W-1:0] ptr_inc(
         input logic [BURST_FIFO_PTR_W-1:0] ptr
     );
@@ -107,63 +110,53 @@ module axi_burst_reader #(
         if (FIFO_DEPTH_WORDS <= MAX_OUTSTANDING_BEATS) $error("FIFO_DEPTH_WORDS should exceed MAX_OUTSTANDING_BEATS.");
     end
 
-    assign ar_fire         = m_axi_rd.arvalid && m_axi_rd.arready;
-    assign r_fire          = m_axi_rd.rvalid && m_axi_rd.rready;
-    assign task_ready      = (state_reg == S_IDLE) && !result_pending_reg;
-    assign word_valid      = r_fire && !error_latched_reg && (m_axi_rd.rresp == 2'b00) && word_ready;
-    assign word_data       = m_axi_rd.rdata;
-    assign result_valid    = result_pending_reg;
-    assign result_done     = result_done_reg;
-    assign result_error    = result_error_reg;
-    assign word_count_ext = word_count;
-    assign expected_rlast  = (burst_count_reg != 0) && (burst_beats_q[burst_head_reg] == 1);
+    assign ar_fire      = m_axi_rd.arvalid && m_axi_rd.arready;
+    assign r_fire       = m_axi_rd.rvalid && m_axi_rd.rready;
+    assign task_ready   = (state_reg == S_IDLE) && !result_pending_reg;
+    assign word_valid   = r_fire && !error_latched_reg && (m_axi_rd.rresp == 2'b00) && word_ready;
+    assign word_data    = m_axi_rd.rdata;
+    assign result_valid = result_pending_reg;
+    assign result_done  = result_done_reg;
+    assign result_error = result_error_reg;
+    assign expected_rlast = (burst_count_reg != 0) && (burst_beats_q[burst_head_reg] == 1);
 
-    // 组合预计算：
-    // - 下一次突发地址/长度
-    // - FIFO 剩余空间
-    // - 当前是否允许继续发 AR
     always_comb begin
         task_addr_offset_calc = '0;
         task_addr_offset_calc[AXI_SIZE_W-1:0] = task_addr[AXI_SIZE_W-1:0];
         task_words_total_calc = calc_total_words(task_byte_count, task_addr_offset_calc, BYTE_W);
 
-        next_burst_addr_calc = aligned_start_addr_reg + (words_requested_reg << AXI_SIZE_W);
-        words_remaining_calc = words_total_to_fetch_reg - words_requested_reg;
-
-        bytes_to_4kb_calc = 13'd4096 - {1'b0, next_burst_addr_calc[11:0]};
-        words_to_4kb_calc = calc_words_to_4kb(next_burst_addr_calc, BYTE_W);
-
-        fifo_reserved_words_calc = word_count_ext + beats_inflight_reg;
-        if (fifo_reserved_words_calc >= FIFO_DEPTH_WORDS) begin
-            fifo_space_calc = '0;
+        if (beats_inflight_reg >= MAX_OUTSTANDING_BEATS) begin
+            beats_credit_calc = '0;
         end else begin
-            fifo_space_calc = FIFO_DEPTH_WORDS - fifo_reserved_words_calc;
+            beats_credit_calc = MAX_OUTSTANDING_BEATS - beats_inflight_reg;
         end
 
         next_burst_beats_calc = calc_burst_words(
-            words_remaining_calc,
-            words_to_4kb_calc,
+            words_request_remaining_reg,
+            next_issue_words_to_4kb_reg,
             BURST_MAX_LEN,
-            fifo_space_calc
+            beats_credit_reg
         );
 
         can_issue_ar_calc = 1'b0;
         if ((state_reg == S_ACTIVE) &&
+            !issue_seed_valid_reg &&
+            !issue_gate_valid_reg &&
+            !issue_plan_valid_reg &&
+            !issue_calc_valid_reg &&
+            !issue_prep_valid_reg &&
+            !issue_commit_valid_reg &&
             !m_axi_rd.arvalid &&
             !error_latched_reg &&
-            (words_requested_reg < words_total_to_fetch_reg) &&
+            (words_request_remaining_reg != 0) &&
             !word_almost_full &&
             (bursts_inflight_reg < MAX_OUTSTANDING_BURSTS) &&
-            ((beats_inflight_reg + next_burst_beats_calc) <= MAX_OUTSTANDING_BEATS) &&
+            (beats_credit_reg != 0) &&
             (next_burst_beats_calc != 0)) begin
             can_issue_ar_calc = 1'b1;
         end
     end
 
-    // 时序主过程：
-    // - 维护在途 burst 队列
-    // - 根据 AR/R 握手更新剩余计数
-    // - 在 done/error 条件满足时对外发状态
     always_ff @(posedge axi_clk) begin
         logic [BURST_FIFO_PTR_W-1:0] burst_head_next;
         logic [BURST_FIFO_PTR_W-1:0] burst_tail_next;
@@ -182,9 +175,29 @@ module axi_burst_reader #(
             aligned_start_addr_reg   <= '0;
             words_total_to_fetch_reg <= '0;
             words_requested_reg      <= '0;
+            next_issue_addr_reg      <= '0;
+            words_request_remaining_reg <= '0;
+            next_issue_words_to_4kb_reg <= '0;
             words_received_reg       <= '0;
             beats_inflight_reg       <= '0;
             bursts_inflight_reg      <= '0;
+            beats_credit_reg         <= MAX_OUTSTANDING_BEATS;
+            issue_seed_valid_reg     <= 1'b0;
+            issue_gate_valid_reg     <= 1'b0;
+            issue_gate_addr_reg      <= '0;
+            issue_gate_words_remaining_reg <= '0;
+            issue_plan_valid_reg     <= 1'b0;
+            issue_plan_addr_reg      <= '0;
+            issue_plan_words_remaining_reg <= '0;
+            issue_calc_valid_reg     <= 1'b0;
+            issue_calc_addr_reg      <= '0;
+            issue_calc_words_remaining_reg <= '0;
+            issue_calc_words_to_4kb_reg <= '0;
+            issue_prep_valid_reg     <= 1'b0;
+            issue_prep_addr_reg      <= '0;
+            issue_prep_beats_reg     <= '0;
+            issue_commit_valid_reg   <= 1'b0;
+            issue_commit_beats_reg   <= '0;
             error_latched_reg        <= 1'b0;
             result_pending_reg       <= 1'b0;
             result_done_reg          <= 1'b0;
@@ -207,18 +220,20 @@ module axi_burst_reader #(
             m_axi_rd.arvalid         <= 1'b0;
             m_axi_rd.rready          <= 1'b0;
         end else begin
-            rresp_error_now  = r_fire && (m_axi_rd.rresp != 2'b00);
-            rlast_error_now  = r_fire && (m_axi_rd.rlast != expected_rlast);
+            rresp_error_now   = r_fire && (m_axi_rd.rresp != 2'b00);
+            rlast_error_now   = r_fire && (m_axi_rd.rlast != expected_rlast);
             fifo_overflow_now = r_fire && !error_latched_reg && !word_ready;
-            fatal_now        = rresp_error_now || rlast_error_now || fifo_overflow_now;
+            fatal_now         = rresp_error_now || rlast_error_now || fifo_overflow_now;
 
-            burst_head_next  = burst_head_reg;
-            burst_tail_next  = burst_tail_reg;
-            burst_count_next = burst_count_reg;
+            burst_head_next      = burst_head_reg;
+            burst_tail_next      = burst_tail_reg;
+            burst_count_next     = burst_count_reg;
             words_requested_next = words_requested_reg;
             words_received_next  = words_received_reg;
             beats_inflight_next  = beats_inflight_reg;
             bursts_inflight_next = bursts_inflight_reg;
+            next_burst_beats_ext_calc = issue_prep_beats_reg;
+            beats_credit_reg <= beats_credit_calc;
 
             m_axi_rd.rready <= 1'b0;
             case (state_reg)
@@ -226,7 +241,6 @@ module axi_burst_reader #(
                     m_axi_rd.rready <= (beats_inflight_reg != 0) && !error_latched_reg && word_ready && !word_almost_full;
                 end
                 S_ERROR: begin
-                    // 出错后仍把已经发出去的 burst 收完，避免总线协议残留。
                     m_axi_rd.rready <= (beats_inflight_reg != 0);
                 end
                 default: begin
@@ -246,31 +260,105 @@ module axi_burst_reader #(
             end
 
             if (m_axi_rd.arvalid && m_axi_rd.arready) begin
-                m_axi_rd.arvalid <= 1'b0;
+                m_axi_rd.arvalid       <= 1'b0;
+                issue_prep_valid_reg   <= 1'b0;
+                issue_commit_valid_reg <= 1'b1;
+                issue_commit_beats_reg <= issue_prep_beats_reg;
             end
 
             if (state_reg == S_IDLE) begin
-                error_latched_reg <= 1'b0;
-                m_axi_rd.arvalid  <= 1'b0;
-                m_axi_rd.rready   <= 1'b0;
+                error_latched_reg   <= 1'b0;
+                issue_seed_valid_reg <= 1'b0;
+                issue_gate_valid_reg <= 1'b0;
+                issue_plan_valid_reg <= 1'b0;
+                issue_calc_valid_reg <= 1'b0;
+                issue_prep_valid_reg <= 1'b0;
+                issue_commit_valid_reg <= 1'b0;
+                beats_credit_reg    <= beats_credit_calc;
+                m_axi_rd.arvalid    <= 1'b0;
+                m_axi_rd.rready     <= 1'b0;
 
                 if (task_valid && task_ready) begin
                     aligned_start_addr_reg   <= align_addr(task_addr, AXI_SIZE_W);
                     words_total_to_fetch_reg <= task_words_total_calc;
                     words_requested_reg      <= '0;
+                    next_issue_addr_reg      <= align_addr(task_addr, AXI_SIZE_W);
+                    words_request_remaining_reg <= task_words_total_calc;
+                    next_issue_words_to_4kb_reg <= calc_words_to_4kb(align_addr(task_addr, AXI_SIZE_W), BYTE_W);
                     words_received_reg       <= '0;
                     beats_inflight_reg       <= '0;
                     bursts_inflight_reg      <= '0;
+                    beats_credit_reg         <= MAX_OUTSTANDING_BEATS;
+                    issue_seed_valid_reg     <= 1'b0;
+                    issue_gate_valid_reg     <= 1'b0;
+                    issue_plan_valid_reg     <= 1'b0;
+                    issue_calc_valid_reg     <= 1'b0;
+                    issue_commit_valid_reg   <= 1'b0;
                     burst_head_reg           <= '0;
                     burst_tail_reg           <= '0;
                     burst_count_reg          <= '0;
                     state_reg                <= S_ACTIVE;
                 end
             end else begin
+                if (issue_commit_valid_reg) begin
+                    burst_beats_q[burst_tail_reg] <= issue_commit_beats_reg[BURST_COUNT_W-1:0];
+                    burst_tail_next               = ptr_inc(burst_tail_reg);
+                    burst_count_next              = burst_count_next + 1'b1;
+                    words_requested_next          = words_requested_next + issue_commit_beats_reg;
+                    next_issue_addr_reg           <= next_issue_addr_reg + (issue_commit_beats_reg << AXI_SIZE_W);
+                    words_request_remaining_reg   <= words_request_remaining_reg - issue_commit_beats_reg;
+                    if (issue_commit_beats_reg == next_issue_words_to_4kb_reg) begin
+                        next_issue_words_to_4kb_reg <= WORDS_PER_4KB;
+                    end else begin
+                        next_issue_words_to_4kb_reg <= next_issue_words_to_4kb_reg - issue_commit_beats_reg;
+                    end
+                    beats_inflight_next           = beats_inflight_next + issue_commit_beats_reg;
+                    bursts_inflight_next          = bursts_inflight_next + 1'b1;
+                    issue_commit_valid_reg        <= 1'b0;
+                end
+
                 if (can_issue_ar_calc) begin
+                    issue_seed_valid_reg           <= 1'b1;
+                end
+
+                if (issue_seed_valid_reg && !issue_gate_valid_reg && !issue_plan_valid_reg && !issue_calc_valid_reg && !issue_prep_valid_reg) begin
+                    issue_seed_valid_reg           <= 1'b0;
+                    issue_gate_valid_reg           <= 1'b1;
+                    issue_gate_addr_reg            <= next_issue_addr_reg;
+                    issue_gate_words_remaining_reg <= words_request_remaining_reg;
+                end
+
+                if (issue_gate_valid_reg && !issue_plan_valid_reg && !issue_calc_valid_reg && !issue_prep_valid_reg) begin
+                    issue_gate_valid_reg           <= 1'b0;
+                    issue_plan_valid_reg           <= 1'b1;
+                    issue_plan_addr_reg            <= issue_gate_addr_reg;
+                    issue_plan_words_remaining_reg <= issue_gate_words_remaining_reg;
+                end
+
+                if (issue_plan_valid_reg && !issue_calc_valid_reg && !issue_prep_valid_reg) begin
+                    issue_plan_valid_reg           <= 1'b0;
+                    issue_calc_valid_reg           <= 1'b1;
+                    issue_calc_addr_reg            <= issue_plan_addr_reg;
+                    issue_calc_words_remaining_reg <= issue_plan_words_remaining_reg;
+                    issue_calc_words_to_4kb_reg    <= calc_words_to_4kb(issue_plan_addr_reg, BYTE_W);
+                end
+
+                if (issue_calc_valid_reg && !issue_prep_valid_reg) begin
+                    issue_calc_valid_reg <= 1'b0;
+                    issue_prep_valid_reg <= 1'b1;
+                    issue_prep_addr_reg  <= issue_calc_addr_reg;
+                    issue_prep_beats_reg <= calc_burst_words(
+                        issue_calc_words_remaining_reg,
+                        issue_calc_words_to_4kb_reg,
+                        BURST_MAX_LEN,
+                        beats_credit_reg
+                    );
+                end
+
+                if (issue_prep_valid_reg && !m_axi_rd.arvalid) begin
                     m_axi_rd.arid     <= '0;
-                    m_axi_rd.araddr   <= next_burst_addr_calc;
-                    m_axi_rd.arlen    <= next_burst_beats_calc[7:0] - 1'b1;
+                    m_axi_rd.araddr   <= issue_prep_addr_reg;
+                    m_axi_rd.arlen    <= issue_prep_beats_reg[7:0] - 1'b1;
                     m_axi_rd.arsize   <= AXI_SIZE;
                     m_axi_rd.arburst  <= 2'b01;
                     m_axi_rd.arlock   <= 1'b0;
@@ -282,17 +370,6 @@ module axi_burst_reader #(
                     m_axi_rd.arvalid  <= 1'b1;
                 end
 
-                next_burst_beats_ext_calc = next_burst_beats_calc;
-
-                if (ar_fire) begin
-                    burst_beats_q[burst_tail_reg] <= next_burst_beats_calc[BURST_COUNT_W-1:0];
-                    burst_tail_next               = ptr_inc(burst_tail_reg);
-                    burst_count_next              = burst_count_next + 1'b1;
-                    words_requested_next          = words_requested_next + next_burst_beats_ext_calc;
-                    beats_inflight_next           = beats_inflight_next + next_burst_beats_ext_calc;
-                    bursts_inflight_next          = bursts_inflight_next + 1'b1;
-                end
-
                 if (r_fire) begin
                     words_received_next = words_received_next + 1'b1;
                     if (beats_inflight_next != 0) beats_inflight_next = beats_inflight_next - 1'b1;
@@ -300,7 +377,7 @@ module axi_burst_reader #(
                     if (burst_count_reg == 0) begin
                         error_latched_reg <= 1'b1;
                     end else if (expected_rlast) begin
-                        burst_head_next = ptr_inc(burst_head_reg);
+                        burst_head_next  = ptr_inc(burst_head_reg);
                         burst_count_next = burst_count_next - 1'b1;
                         if (bursts_inflight_next != 0) bursts_inflight_next = bursts_inflight_next - 1'b1;
                     end else begin
@@ -310,9 +387,9 @@ module axi_burst_reader #(
                     if (fatal_now) error_latched_reg <= 1'b1;
                 end
 
-                burst_head_reg  <= burst_head_next;
-                burst_tail_reg  <= burst_tail_next;
-                burst_count_reg <= burst_count_next;
+                burst_head_reg      <= burst_head_next;
+                burst_tail_reg      <= burst_tail_next;
+                burst_count_reg     <= burst_count_next;
                 words_requested_reg <= words_requested_next;
                 words_received_reg  <= words_received_next;
                 beats_inflight_reg  <= beats_inflight_next;
@@ -321,26 +398,44 @@ module axi_burst_reader #(
                 case (state_reg)
                     S_ACTIVE: begin
                         if (fatal_now || error_latched_reg) begin
-                            m_axi_rd.arvalid <= 1'b0;
-                            state_reg        <= S_ERROR;
-                        end else if ((words_requested_next == words_total_to_fetch_reg) && (beats_inflight_next == 0)) begin
+                            m_axi_rd.arvalid      <= 1'b0;
+                            issue_seed_valid_reg  <= 1'b0;
+                            issue_gate_valid_reg  <= 1'b0;
+                            issue_plan_valid_reg  <= 1'b0;
+                            issue_calc_valid_reg  <= 1'b0;
+                            issue_prep_valid_reg  <= 1'b0;
+                            issue_commit_valid_reg <= 1'b0;
+                            state_reg             <= S_ERROR;
+                        end else if ((words_request_remaining_reg == 0) && (beats_inflight_next == 0)) begin
                             state_reg <= S_DONE;
-                        end else if (words_requested_next == words_total_to_fetch_reg) begin
+                        end else if (words_request_remaining_reg == 0) begin
                             state_reg <= S_DRAIN;
                         end
                     end
 
                     S_DRAIN: begin
                         if (fatal_now || error_latched_reg) begin
-                            m_axi_rd.arvalid <= 1'b0;
-                            state_reg        <= S_ERROR;
+                            m_axi_rd.arvalid      <= 1'b0;
+                            issue_seed_valid_reg  <= 1'b0;
+                            issue_gate_valid_reg  <= 1'b0;
+                            issue_plan_valid_reg  <= 1'b0;
+                            issue_calc_valid_reg  <= 1'b0;
+                            issue_prep_valid_reg  <= 1'b0;
+                            issue_commit_valid_reg <= 1'b0;
+                            state_reg             <= S_ERROR;
                         end else if (beats_inflight_next == 0) begin
                             state_reg <= S_DONE;
                         end
                     end
 
                     S_ERROR: begin
-                        m_axi_rd.arvalid <= 1'b0;
+                        m_axi_rd.arvalid     <= 1'b0;
+                        issue_seed_valid_reg <= 1'b0;
+                        issue_gate_valid_reg <= 1'b0;
+                        issue_plan_valid_reg <= 1'b0;
+                        issue_calc_valid_reg <= 1'b0;
+                        issue_prep_valid_reg <= 1'b0;
+                        issue_commit_valid_reg <= 1'b0;
                         if ((beats_inflight_next == 0) && !result_pending_reg) begin
                             result_pending_reg <= 1'b1;
                             result_done_reg    <= 1'b0;
@@ -349,7 +444,13 @@ module axi_burst_reader #(
                     end
 
                     S_DONE: begin
-                        m_axi_rd.arvalid <= 1'b0;
+                        m_axi_rd.arvalid     <= 1'b0;
+                        issue_seed_valid_reg <= 1'b0;
+                        issue_gate_valid_reg <= 1'b0;
+                        issue_plan_valid_reg <= 1'b0;
+                        issue_calc_valid_reg <= 1'b0;
+                        issue_prep_valid_reg <= 1'b0;
+                        issue_commit_valid_reg <= 1'b0;
                         if (!result_pending_reg) begin
                             result_pending_reg <= 1'b1;
                             result_done_reg    <= 1'b1;
@@ -366,4 +467,3 @@ module axi_burst_reader #(
     end
 
 endmodule
-

@@ -1,4 +1,4 @@
-﻿# 模块级仿真入口
+# 模块级仿真入口
 
 统一入口脚本：
 
@@ -35,15 +35,19 @@
 - 缺少证据时，保持保守显示为 `无`、`未验证` 或 `未知`。
 | 模块 | 模块完成 | 仿真文件 | 已仿真 | 仿真结果 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| `image_geo_top` | 是 | `tb_image_geo_top.sv (v1)` | `v1` | 通过 | 顶层 Stage A 联调仿真 |
+| `image_geo_top` | 是 | `tb_image_geo_top.sv (v1)` | `v1` | 通过 | 顶层 rotate/scale/tile-cache 联调仿真 |
+| `src_tile_cache` | 是 | `tb_src_tile_cache.sv (v1)` | `v1` | 通过 | baseline cache fill/hit/replace regression |
+| `src_tile_cache(prefetch)` | 是 | `tb_src_tile_cache_prefetch.sv (v1)` | `v1` | 通过 | prefetch effectiveness regression |
 | `axi_burst_reader` | 是 | `无` | `无` | 未验证 | 还没有独立模块级 testbench |
-| `ddr_read_engine` | 是 | `tb_ddr_read_engine.sv (版本未知)` | `版本未知` | 通过 | 已完成模块级联调 |
+| `ddr_read_engine` | 是 | `tb_ddr_read_engine.sv (v1)` | `v1` | 通过 | 已完成模块级联调 |
 | `task_cdc` | 是 | `tb_task_cdc.sv (v2)` | `v2` | 通过 | CDC task 通道已验证 |
 | `result_cdc` | 是 | `tb_result_cdc.sv (v2)` | `v2` | 通过 | CDC result 通道已验证 |
 | `async_word_fifo` | 是 | `tb_async_word_fifo_xpm.sv (v1)` | `v1` | 通过 | 仿真 fallback 已修复并验证 |
 | `src_line_buffer` | 是 | `tb_src_line_buffer.sv (v1)` | `v1` | 通过 | 双读口和错误路径已验证 |
+| `scaler_ctrl` | 是 | `tb_scaler_ctrl.sv (v1)` | `v1` | 通过 | 控制器主流程已验证 |
 | `pixel_unpacker` | 是 | `tb_pixel_unpacker.sv (v1)` | `v1` | 通过 | 拆包与错误处理已验证 |
 | `scale_core_nearest` | 是 | `tb_scale_core_nearest.sv (v1)` | `v1` | 通过 | 最近邻核心已验证 |
+| `image_geo_top(prefetch_stress)` | 鏄?| `tb_image_geo_top_prefetch_stress.sv (v1)` | `v1` | 閫氳繃 | 澶у昂瀵稿眰鍙 prefetch starts 涓庨檷浣庣殑 demand misses |
 <!-- STATUS_TABLE_END -->
 
 ## 当前支持的模块

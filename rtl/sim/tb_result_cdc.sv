@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_result_cdc.md。
 
+// Keep tb_result_cdc.md in sync
 module tb_result_cdc;
 
     // 测试目标：

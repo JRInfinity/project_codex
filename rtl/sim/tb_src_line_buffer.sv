@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_src_line_buffer.md。
 
+// Keep tb_src_line_buffer.md in sync
 module tb_src_line_buffer;
 
     // 测试目标：

@@ -1,6 +1,6 @@
 webtalk_init -webtalk_dir C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/
 webtalk_register_client -client project
-webtalk_add_data -client project -key date_generated -value "Thu Apr  2 22:24:47 2026" -context "software_version_and_target_device"
+webtalk_add_data -client project -key date_generated -value "Tue Apr  7 20:33:33 2026" -context "software_version_and_target_device"
 webtalk_add_data -client project -key product_version -value "XSIM v2019.2 (64-bit)" -context "software_version_and_target_device"
 webtalk_add_data -client project -key build_version -value "2708876" -context "software_version_and_target_device"
 webtalk_add_data -client project -key os_platform -value "WIN64" -context "software_version_and_target_device"
@@ -14,7 +14,7 @@ webtalk_add_data -client project -key target_package -value "not_applicable" -co
 webtalk_add_data -client project -key target_speed -value "not_applicable" -context "software_version_and_target_device"
 webtalk_add_data -client project -key random_id -value "8d0af64a-52ec-4974-803f-821e37563c20" -context "software_version_and_target_device"
 webtalk_add_data -client project -key project_id -value "bd78d987-3d5a-4a70-911f-986d8744bc9e" -context "software_version_and_target_device"
-webtalk_add_data -client project -key project_iteration -value "6" -context "software_version_and_target_device"
+webtalk_add_data -client project -key project_iteration -value "10" -context "software_version_and_target_device"
 webtalk_add_data -client project -key os_name -value "Windows Server 2016 or Windows 10" -context "user_environment"
 webtalk_add_data -client project -key os_release -value "major release  (build 9200)" -context "user_environment"
 webtalk_add_data -client project -key cpu_name -value "12th Gen Intel(R) Core(TM) i7-12700H" -context "user_environment"
@@ -26,7 +26,7 @@ webtalk_add_data -client xsim -key runall -value "true" -context "xsim\\command_
 webtalk_add_data -client xsim -key Command -value "xsim" -context "xsim\\command_line_options"
 webtalk_add_data -client xsim -key runtime -value "555 ns" -context "xsim\\usage"
 webtalk_add_data -client xsim -key iteration -value "0" -context "xsim\\usage"
-webtalk_add_data -client xsim -key Simulation_Time -value "0.08_sec" -context "xsim\\usage"
-webtalk_add_data -client xsim -key Simulation_Memory -value "9440_KB" -context "xsim\\usage"
-webtalk_transmit -clientid 2985178526 -regid "" -xml C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/usage_statistics_ext_xsim.xml -html C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/usage_statistics_ext_xsim.html -wdm C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/usage_statistics_ext_xsim.wdm -intro "<H3>XSIM Usage Report</H3><BR>"
+webtalk_add_data -client xsim -key Simulation_Time -value "0.01_sec" -context "xsim\\usage"
+webtalk_add_data -client xsim -key Simulation_Memory -value "9088_KB" -context "xsim\\usage"
+webtalk_transmit -clientid 3258223583 -regid "" -xml C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/usage_statistics_ext_xsim.xml -html C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/usage_statistics_ext_xsim.html -wdm C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_src_line_buffer_auto/webtalk/usage_statistics_ext_xsim.wdm -intro "<H3>XSIM Usage Report</H3><BR>"
 webtalk_terminate

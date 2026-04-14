@@ -18,9 +18,9 @@ module ddr_read_engine #(
     input  logic               axi_clk,
     input  logic               core_clk,
     input  logic               sys_rst,
-    input  logic               task_start,
-    input  logic [ADDR_W-1:0]  task_addr,
-    input  logic [31:0]        task_byte_count,
+    input  logic               task_start, // ctrl发出的读任务启动信号，pulse
+    input  logic [ADDR_W-1:0]  task_addr, // ctrl发来的读任务起始地址
+    input  logic [31:0]        task_byte_count, // ctrl发来的读任务字节数
     output logic               task_busy,
     output logic               task_done,
     output logic               task_error,

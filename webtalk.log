@@ -2,12 +2,12 @@
 # Webtalk v2019.2 (64-bit)
 # SW Build 2708876 on Wed Nov  6 21:40:23 MST 2019
 # IP Build 2700528 on Thu Nov  7 00:09:20 MST 2019
-# Start of session at: Fri Apr  3 11:27:24 2026
-# Process ID: 29856
+# Start of session at: Tue Apr 14 13:43:39 2026
+# Process ID: 12156
 # Current directory: C:/Users/huawei/Desktop/project_codex
-# Command line: wbtcv.exe -mode batch -source C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_ddr_write_engine_pixelapi/webtalk/xsim_webtalk.tcl -notrace
+# Command line: wbtcv.exe -mode batch -source C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_image_geo_top_round47/webtalk/xsim_webtalk.tcl -notrace
 # Log file: C:/Users/huawei/Desktop/project_codex/webtalk.log
 # Journal file: C:/Users/huawei/Desktop/project_codex\webtalk.jou
 #-----------------------------------------------------------
-source C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_ddr_write_engine_pixelapi/webtalk/xsim_webtalk.tcl -notrace
-INFO: [Common 17-206] Exiting Webtalk at Fri Apr  3 11:27:26 2026...
+source C:/Users/huawei/Desktop/project_codex/xsim.dir/tb_image_geo_top_round47/webtalk/xsim_webtalk.tcl -notrace
+INFO: [Common 17-206] Exiting Webtalk at Tue Apr 14 13:43:43 2026...

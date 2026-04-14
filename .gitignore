@@ -1,0 +1,51 @@
+############################
+# Vivado / FPGA
+############################
+
+# Vivado cache
+.Xil/
+.cache/
+.gen/
+.hw/
+.ip_user_files/
+.runs/
+.sim/
+
+# Simulation
+xsim.dir/
+sim_out/
+
+# Waveform
+*.wdb
+*.wcfg
+
+# Logs
+*.jou
+*.log
+*.pb
+*.str
+
+# Backup logs
+*.backup.jou
+*.backup.log
+
+############################
+# Temp files
+############################
+*.tmp
+*.bak
+*.swp
+*~
+
+############################
+# OS
+############################
+.DS_Store
+Thumbs.db
+
+############################
+# Python / MATLAB
+############################
+__pycache__/
+*.pyc
+*.asv

@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_pixel_unpacker.md。
 
+// Keep tb_pixel_unpacker.md in sync
 module tb_pixel_unpacker;
 
     // 测试目标：

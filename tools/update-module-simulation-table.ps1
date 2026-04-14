@@ -41,7 +41,7 @@ $labels = @{
 $moduleRules = @(
     @{
         Module = "image_geo_top"
-        RtlPath = "rtl/image_geo_top.sv"
+        RtlPath = "rtl/top/image_geo_top.sv"
         SimTarget = "image_geo_top"
         TbFile = "tb_image_geo_top.sv"
         MdFile = "tb_image_geo_top.md"
@@ -94,6 +94,14 @@ $moduleRules = @(
         TbFile = "tb_src_line_buffer.sv"
         MdFile = "tb_src_line_buffer.md"
         Note = U('\u53cc\u8bfb\u53e3\u548c\u9519\u8bef\u8def\u5f84\u5df2\u9a8c\u8bc1')
+    }
+    @{
+        Module = "scaler_ctrl"
+        RtlPath = "rtl/ctrl/scaler_ctrl.sv"
+        SimTarget = "tb_scaler_ctrl"
+        TbFile = "tb_scaler_ctrl.sv"
+        MdFile = "tb_scaler_ctrl.md"
+        Note = U('\u63a7\u5236\u5668\u4e3b\u6d41\u7a0b\u5df2\u9a8c\u8bc1')
     }
     @{
         Module = "pixel_unpacker"

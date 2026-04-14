@@ -21,14 +21,14 @@ foreach ($tb in $tbFiles) {
     }
 
     # 要求 testbench 文件头部带有同步提醒，降低“代码变了但文档没改”的概率。
-    $tbHead = Get-Content $tb.FullName | Select-Object -First 5
+    $tbHead = Get-Content $tb.FullName -Encoding UTF8 | Select-Object -First 5
     $expectedSyncLine = "Keep $base.md in sync"
     if (-not ($tbHead -match [regex]::Escape($expectedSyncLine))) {
         $errors.Add("$($tb.Name) is missing sync reminder comment: '$expectedSyncLine'")
     }
 
     # 对说明文档做最小结构校验，确保关键信息齐全。
-    $mdText = Get-Content $mdPath -Raw
+    $mdText = Get-Content $mdPath -Raw -Encoding UTF8
     foreach ($required in @("DUT:", "Testbench:", "## ", "结果")) {
         if ($mdText -notmatch [regex]::Escape($required)) {
             $errors.Add("$([System.IO.Path]::GetFileName($mdPath)) is missing required marker '$required'")

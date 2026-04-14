@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_ddr_write_engine.md。
 
+// Keep tb_ddr_write_engine.md in sync
 module tb_ddr_write_engine;
 
     // 测试目标：
@@ -16,7 +17,8 @@ module tb_ddr_write_engine;
     localparam int BYTE_W        = DATA_W / 8;
     localparam logic [2:0] AXI_SIZE = $clog2(BYTE_W);
 
-    logic clk;
+    logic axi_clk;
+    logic core_clk;
     logic sys_rst;
 
     logic               task_start;
@@ -42,7 +44,8 @@ module tb_ddr_write_engine;
         .BURST_MAX_LEN(BURST_MAX_LEN),
         .AXI_ID_W(AXI_ID_W)
     ) dut (
-        .clk(clk),
+        .axi_clk(axi_clk),
+        .core_clk(core_clk),
         .sys_rst(sys_rst),
         .task_start(task_start),
         .task_addr(task_addr),
@@ -70,10 +73,13 @@ module tb_ddr_write_engine;
     int                expected_start_idx;
     int                expected_byte_count_reg;
 
-    initial clk = 1'b0;
-    always #5 clk = ~clk;
+    initial axi_clk = 1'b0;
+    always #2.5 axi_clk = ~axi_clk;
 
-    assign in_valid = !sys_rst && (!enable_in_backpressure || ((cycle_count % 4) != 1));
+    initial core_clk = 1'b0;
+    always #5 core_clk = ~core_clk;
+
+    assign in_valid = !sys_rst && task_busy && (!enable_in_backpressure || ((cycle_count % 4) != 1));
     assign in_data  = expected[expected_start_idx + input_idx_reg];
 
     task automatic fill_expected;
@@ -98,9 +104,9 @@ module tb_ddr_write_engine;
             cycle_count           = 0;
             expected_start_idx    = 0;
             expected_byte_count_reg = 0;
-            repeat (6) @(posedge clk);
+            repeat (6) @(posedge core_clk);
             sys_rst = 1'b0;
-            repeat (2) @(posedge clk);
+            repeat (2) @(posedge core_clk);
         end
     endtask
 
@@ -109,16 +115,16 @@ module tb_ddr_write_engine;
         input logic [31:0]       byte_count
     );
         begin
-            @(posedge clk);
+            @(posedge core_clk);
             task_addr       <= addr;
             task_byte_count <= byte_count;
             task_start      <= 1'b1;
-            @(posedge clk);
+            @(posedge core_clk);
             task_start      <= 1'b0;
         end
     endtask
 
-    always_ff @(posedge clk) begin
+    always_ff @(posedge axi_clk) begin
         if (sys_rst) begin
             m_axi_wr.awready       <= 1'b0;
             m_axi_wr.wready        <= 1'b0;
@@ -179,7 +185,7 @@ module tb_ddr_write_engine;
         end
     end
 
-    always_ff @(posedge clk) begin
+    always_ff @(posedge core_clk) begin
         if (sys_rst) begin
         end else begin
             cycle_count <= cycle_count + 1;
@@ -208,7 +214,7 @@ module tb_ddr_write_engine;
             start_write(addr, byte_count);
 
             while (!task_done && !task_error) begin
-                @(posedge clk);
+                @(posedge core_clk);
                 if (cycle_count > 6000) begin
                     $fatal(
                         1,
@@ -257,7 +263,7 @@ module tb_ddr_write_engine;
             start_write(addr, byte_count);
 
             while (!task_done && !task_error) begin
-                @(posedge clk);
+                @(posedge core_clk);
                 if (cycle_count > 6000) begin
                     $fatal(
                         1,

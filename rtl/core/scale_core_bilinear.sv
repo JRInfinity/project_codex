@@ -24,19 +24,20 @@ module scale_core_bilinear #(
     output logic done,
     output logic error,
 
-    output logic                                              line_req_valid,
-    output logic [(MAX_SRC_H > 1 ? $clog2(MAX_SRC_H) : 1)-1:0] line_req_y,
-    input  logic                                              line_req_ready,
-    input  logic [(LINE_NUM > 1 ? $clog2(LINE_NUM) : 1)-1:0]  line_req_sel,
+    // 
+    output logic                                              line_req_valid, // 请求当前行所需的两条源行已经准备好
+    output logic [(MAX_SRC_H > 1 ? $clog2(MAX_SRC_H) : 1)-1:0] line_req_y, // 请求的行号
+    input  logic                                              line_req_ready, // 控制器准备好接受行请求
+    input  logic [(LINE_NUM > 1 ? $clog2(LINE_NUM) : 1)-1:0]  line_req_sel, // 请求的行选择信号，指示控制器将哪两条源行数据提供到 rd0 和 rd1 读口
 
-    output logic                                              pixel_req_valid,
-    output logic [(MAX_SRC_W > 1 ? $clog2(MAX_SRC_W) : 1)-1:0] pixel_req_x,
-    input  logic [PIXEL_W-1:0]                                rd0_rsp_data,
+    output logic                                              pixel_req_valid, // 请求当前像素的两条源行数据已经准备好
+    output logic [(MAX_SRC_W > 1 ? $clog2(MAX_SRC_W) : 1)-1:0] pixel_req_x, // 请求的像素列号
+    input  logic [PIXEL_W-1:0]                                rd0_rsp_data, // 
     input  logic                                              rd0_rsp_valid,
     input  logic [PIXEL_W-1:0]                                rd1_rsp_data,
     input  logic                                              rd1_rsp_valid,
 
-    output logic [PIXEL_W-1:0] pix_data,
+    output logic [PIXEL_W-1:0] pix_data, // 插值后输出像素数据
     output logic               pix_valid,
     input  logic               pix_ready,
     output logic               row_done
@@ -48,8 +49,8 @@ module scale_core_bilinear #(
     localparam int DST_Y_W    = $clog2(MAX_DST_H+1);
     localparam int LINE_SEL_W = (LINE_NUM > 1) ? $clog2(LINE_NUM) : 1;
     localparam int SCALE_W    = FRAC_W + 16;
-    localparam int MUL_W      = PIXEL_W + FRAC_W + 1;
-    localparam int ACC_W      = MUL_W + 1;
+    localparam int MUL_W      = PIXEL_W + FRAC_W + 1; // 乘法结果宽度：像素值宽度 + 小数部分宽度 + 1（防止溢出）
+    localparam int ACC_W      = MUL_W + 1; // 加法结果宽度：乘法结果宽度 + 1（防止溢出）
 
     typedef enum logic [2:0] {
         S_IDLE,
@@ -78,7 +79,7 @@ module scale_core_bilinear #(
     logic [SRC_Y_W-1:0] src_y1_reg;
     logic [FRAC_W-1:0] frac_x_reg;
     logic [FRAC_W-1:0] frac_y_reg;
-    logic [LINE_SEL_W-1:0] line_sel0_reg;
+    logic [LINE_SEL_W-1:0] line_sel0_reg; // 当前行所需的两条源行在 line buffer 中的选择信号
     logic [LINE_SEL_W-1:0] line_sel1_reg;
 
     logic [PIXEL_W-1:0] p00_reg;
@@ -123,12 +124,12 @@ module scale_core_bilinear #(
     logic               pix_fire;
 
     always_comb begin
-        x_pos_next_calc = x_pos_reg + scale_x_reg;
+        x_pos_next_calc = x_pos_reg + scale_x_reg; // x_pos_reg 在源图坐标系下的目标图像素坐标（定点数表示）
         y_pos_next_calc = y_pos_reg + scale_y_reg;
 
-        src_x0_calc_full = x_pos_reg >> FRAC_W;
+        src_x0_calc_full = x_pos_reg >> FRAC_W; // 整数部分
         src_y0_calc_full = y_pos_reg >> FRAC_W;
-        frac_x_calc      = x_pos_reg[FRAC_W-1:0];
+        frac_x_calc      = x_pos_reg[FRAC_W-1:0]; // 小数部分
         frac_y_calc      = y_pos_reg[FRAC_W-1:0];
         next_src_x0_calc_full = x_pos_next_calc >> FRAC_W;
         next_src_y0_calc_full = y_pos_next_calc >> FRAC_W;
@@ -138,7 +139,7 @@ module scale_core_bilinear #(
         if (src_x0_calc_full >= src_w) begin
             src_x0_calc = src_w - 1'b1;
         end else begin
-            src_x0_calc = src_x0_calc_full[SRC_X_W-1:0];
+            src_x0_calc = src_x0_calc_full[SRC_X_W-1:0]; //  
         end
 
         if (src_y0_calc_full >= src_h) begin
@@ -191,7 +192,7 @@ module scale_core_bilinear #(
 
         top_mix_calc = ((ACC_W'(p00_reg) * ACC_W'((1 << FRAC_W) - frac_x_reg)) +
                         (ACC_W'(p01_reg) * ACC_W'(frac_x_reg)) +
-                        ACC_W'(1 << (FRAC_W - 1))) >> FRAC_W;
+                        ACC_W'(1 << (FRAC_W - 1))) >> FRAC_W; //
         bot_mix_calc = ((ACC_W'(p10_reg) * ACC_W'((1 << FRAC_W) - frac_x_reg)) +
                         (ACC_W'(p11_reg) * ACC_W'(frac_x_reg)) +
                         ACC_W'(1 << (FRAC_W - 1))) >> FRAC_W;
@@ -213,13 +214,13 @@ module scale_core_bilinear #(
 
         state_next = state_reg;
         case (state_reg)
-            S_IDLE: begin
+            S_IDLE: begin // 空闲状态
                 if (start) begin
                     state_next = S_PREP_ROW;
                 end
             end
 
-            S_PREP_ROW: begin
+            S_PREP_ROW: begin // 
                 if (error) begin
                     state_next = S_IDLE;
                 end else begin
@@ -347,11 +348,7 @@ module scale_core_bilinear #(
                 S_REQ_LINES: begin
                     if (line_req_valid && line_req_ready) begin
                         line_sel0_reg <= line_req_sel;
-                        if (LINE_NUM == 2) begin
-                            line_sel1_reg <= line_req_sel ^ 1'b1;
-                        end else begin
-                            line_sel1_reg <= line_req_sel;
-                        end
+                        line_sel1_reg <= line_req_sel ^ ((LINE_NUM == 2) ? 1'b1 : 1'b0);
                     end
                 end
 

@@ -3,6 +3,8 @@
 // 2. 按 AXI 约束将请求拆分为不跨 4KB 边界的 INCR 写突发
 // 3. 消费上游已打包的数据字并驱动 AW/W/B 通道
 // 4. 汇总写响应状态并上报完成或错误结果
+`timescale 1ns/1ps
+
 import ddr_axi_pkg::*;
 module axi_burst_writer #(
     parameter int DATA_W        = 32,
@@ -36,6 +38,7 @@ module axi_burst_writer #(
     typedef enum logic [2:0] {
         S_IDLE,
         S_PREP,
+        S_AWCFG,
         S_AW,
         S_WDATA,
         S_BRESP,
@@ -47,8 +50,13 @@ module axi_burst_writer #(
     logic [ADDR_W-1:0] aligned_start_addr_reg;
     logic [COUNT_W-1:0] words_total_reg;
     logic [COUNT_W-1:0] words_sent_total_reg;
+    logic [ADDR_W-1:0]  next_write_addr_reg;
+    logic [COUNT_W-1:0] words_write_remaining_reg;
+    logic [COUNT_W-1:0] next_write_words_to_4kb_reg;
     logic [COUNT_W-1:0] burst_words_reg;
     logic [COUNT_W-1:0] burst_sent_words_reg;
+    logic [ADDR_W-1:0]  aw_prep_addr_reg;
+    logic [7:0]         aw_prep_len_reg;
 
     logic [DATA_W-1:0]  word_buf_data_reg;
     logic [BYTE_W-1:0]  word_buf_strb_reg;
@@ -60,7 +68,6 @@ module axi_burst_writer #(
 
     logic [ADDR_W-1:0] current_burst_addr_calc;
     logic [COUNT_W-1:0] words_remaining_calc;
-    logic [COUNT_W-1:0] words_to_4kb_calc;
     logic [COUNT_W-1:0] burst_words_calc;
     logic aw_fire;
     logic w_fire;
@@ -76,10 +83,9 @@ module axi_burst_writer #(
     assign w_fire  = m_axi_wr.wvalid && m_axi_wr.wready;
     assign b_fire  = m_axi_wr.bvalid && m_axi_wr.bready;
 
-    assign current_burst_addr_calc = aligned_start_addr_reg + (words_sent_total_reg << AXI_SIZE_W);
-    assign words_remaining_calc    = words_total_reg - words_sent_total_reg;
-    assign words_to_4kb_calc       = calc_words_to_4kb(current_burst_addr_calc, BYTE_W);
-    assign burst_words_calc        = calc_burst_words(words_remaining_calc, words_to_4kb_calc, BURST_MAX_LEN, words_remaining_calc);
+    assign current_burst_addr_calc = next_write_addr_reg;
+    assign words_remaining_calc    = words_write_remaining_reg;
+    assign burst_words_calc        = calc_burst_words(words_remaining_calc, next_write_words_to_4kb_reg, BURST_MAX_LEN, words_remaining_calc);
     assign burst_last_word         = (burst_sent_words_reg == burst_words_reg - 1'b1);
 
     assign word_ready   = (state_reg == S_WDATA) && !word_buf_valid_reg;
@@ -95,8 +101,13 @@ module axi_burst_writer #(
             aligned_start_addr_reg <= '0;
             words_total_reg       <= '0;
             words_sent_total_reg  <= '0;
+            next_write_addr_reg   <= '0;
+            words_write_remaining_reg <= '0;
+            next_write_words_to_4kb_reg <= '0;
             burst_words_reg       <= '0;
             burst_sent_words_reg  <= '0;
+            aw_prep_addr_reg      <= '0;
+            aw_prep_len_reg       <= '0;
             word_buf_data_reg     <= '0;
             word_buf_strb_reg     <= '0;
             word_buf_valid_reg    <= 1'b0;
@@ -152,10 +163,13 @@ module axi_burst_writer #(
                     m_axi_wr.wlast     <= 1'b0;
                     m_axi_wr.bready    <= 1'b0;
 
-                    if (task_valid && task_ready) begin
+                    if (task_valid && task_ready) begin // 
                         aligned_start_addr_reg <= align_addr(task_addr, AXI_SIZE_W);
                         words_total_reg       <= calc_total_words(task_byte_count, task_addr[AXI_SIZE_W-1:0], BYTE_W);
                         words_sent_total_reg  <= '0;
+                        next_write_addr_reg   <= align_addr(task_addr, AXI_SIZE_W);
+                        words_write_remaining_reg <= calc_total_words(task_byte_count, task_addr[AXI_SIZE_W-1:0], BYTE_W);
+                        next_write_words_to_4kb_reg <= calc_words_to_4kb(align_addr(task_addr, AXI_SIZE_W), BYTE_W);
                         burst_sent_words_reg  <= '0;
                         state_reg             <= S_PREP;
                     end
@@ -168,9 +182,16 @@ module axi_burst_writer #(
                     end else begin
                         burst_words_reg      <= burst_words_calc;
                         burst_sent_words_reg <= '0;
+                        aw_prep_addr_reg     <= current_burst_addr_calc;
+                        aw_prep_len_reg      <= burst_words_calc[7:0] - 1'b1;
+                        state_reg            <= S_AWCFG;
+                    end
+                end
+
+                S_AWCFG: begin
                         m_axi_wr.awid        <= '0;
-                        m_axi_wr.awaddr      <= current_burst_addr_calc;
-                        m_axi_wr.awlen       <= burst_words_calc[7:0] - 1'b1;
+                        m_axi_wr.awaddr      <= aw_prep_addr_reg;
+                        m_axi_wr.awlen       <= aw_prep_len_reg;
                         m_axi_wr.awsize      <= AXI_SIZE;
                         m_axi_wr.awburst     <= 2'b01;
                         m_axi_wr.awlock      <= 1'b0;
@@ -181,7 +202,6 @@ module axi_burst_writer #(
                         m_axi_wr.awuser      <= '0;
                         m_axi_wr.awvalid     <= 1'b1;
                         state_reg            <= S_AW;
-                    end
                 end
 
                 S_AW: begin
@@ -203,6 +223,13 @@ module axi_burst_writer #(
                         m_axi_wr.wvalid       <= 1'b0;
                         burst_sent_words_reg  <= burst_sent_words_reg + 1'b1;
                         words_sent_total_reg  <= words_sent_total_reg + 1'b1;
+                        next_write_addr_reg   <= next_write_addr_reg + (1'b1 << AXI_SIZE_W);
+                        words_write_remaining_reg <= words_write_remaining_reg - 1'b1;
+                        if (next_write_words_to_4kb_reg == 1) begin
+                            next_write_words_to_4kb_reg <= 4096 / BYTE_W;
+                        end else begin
+                            next_write_words_to_4kb_reg <= next_write_words_to_4kb_reg - 1'b1;
+                        end
 
                         if (burst_last_word) begin
                             m_axi_wr.bready <= 1'b1;
@@ -218,7 +245,7 @@ module axi_burst_writer #(
                             error_latched_reg <= 1'b1;
                         end
 
-                        if ((m_axi_wr.bresp != 2'b00) || ((words_sent_total_reg) == words_total_reg)) begin
+                        if ((m_axi_wr.bresp != 2'b00) || (words_write_remaining_reg == 0)) begin
                             state_reg <= S_DONE;
                         end else begin
                             state_reg <= S_PREP;

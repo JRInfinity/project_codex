@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // 说明：修改测试场景或检查项时，同步更新 tb_async_word_fifo_xpm.md。
 
+// Keep tb_async_word_fifo_xpm.md in sync
 module tb_async_word_fifo_xpm;
 
     // 测试目标：

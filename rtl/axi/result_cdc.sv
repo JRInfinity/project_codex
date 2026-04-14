@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 // 模块职责：
 // 1. 将一次任务结果事件从 src_clk 域传到 dst_clk 域
 // 2. 在目标时钟域输出单周期 done/error 脉冲
