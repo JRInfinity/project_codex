@@ -86,12 +86,16 @@ module src_tile_cache #(
     logic [$clog2(TILE_W+1)-1:0]    fill_row_width_reg;
     logic [$clog2(TILE_H+1)-1:0]    fill_tile_height_reg;
     logic                           fill_is_prefetch_reg;
+    logic                           fill_plan_seed_valid_reg;
+    logic [SLOT_W-1:0]              fill_plan_seed_slot_reg;
+    logic [TILE_X_W-1:0]            fill_plan_seed_tile_x_reg;
+    logic [TILE_Y_W-1:0]            fill_plan_seed_tile_y_reg;
+    logic                           fill_plan_seed_is_prefetch_reg;
     logic                           fill_plan_valid_reg;
     logic [SLOT_W-1:0]              fill_plan_slot_reg;
     logic [TILE_X_W-1:0]            fill_plan_tile_x_reg;
     logic [TILE_Y_W-1:0]            fill_plan_tile_y_reg;
     logic [$clog2(TILE_W+1)-1:0]    fill_plan_row_width_reg;
-    logic [$clog2(TILE_H+1)-1:0]    fill_plan_tile_height_reg;
     logic                           fill_plan_is_prefetch_reg;
     logic                           row_inflight_reg;
     logic                           read_start_reg;
@@ -337,12 +341,16 @@ module src_tile_cache #(
             fill_row_width_reg <= '0;
             fill_tile_height_reg <= '0;
             fill_is_prefetch_reg <= 1'b0;
+            fill_plan_seed_valid_reg <= 1'b0;
+            fill_plan_seed_slot_reg <= '0;
+            fill_plan_seed_tile_x_reg <= '0;
+            fill_plan_seed_tile_y_reg <= '0;
+            fill_plan_seed_is_prefetch_reg <= 1'b0;
             fill_plan_valid_reg <= 1'b0;
             fill_plan_slot_reg <= '0;
             fill_plan_tile_x_reg <= '0;
             fill_plan_tile_y_reg <= '0;
             fill_plan_row_width_reg <= '0;
-            fill_plan_tile_height_reg <= '0;
             fill_plan_is_prefetch_reg <= 1'b0;
             row_inflight_reg   <= 1'b0;
             read_start_reg     <= 1'b0;
@@ -399,6 +407,7 @@ module src_tile_cache #(
                 cfg_geom_init_pending_reg <= 1'b1;
                 fill_active_reg  <= 1'b0;
                 fill_is_prefetch_reg <= 1'b0;
+                fill_plan_seed_valid_reg <= 1'b0;
                 fill_plan_valid_reg <= 1'b0;
                 row_inflight_reg <= 1'b0;
                 last_req_valid_reg <= 1'b0;
@@ -506,22 +515,19 @@ module src_tile_cache #(
             if (read_error) begin
                 error            <= 1'b1;
                 fill_active_reg  <= 1'b0;
+                fill_plan_seed_valid_reg <= 1'b0;
                 fill_plan_valid_reg <= 1'b0;
                 row_inflight_reg <= 1'b0;
                 slot_valid_reg[fill_slot_reg] <= 1'b0;
             end
 
             if (!cfg_geom_init_pending_reg && !sample_decode_valid_reg && !sample_issue_valid_reg &&
-                !fill_active_reg && !fill_plan_valid_reg && fill_request_present && !error) begin
-                fill_plan_valid_reg <= 1'b1;
-                fill_plan_slot_reg <= fill_request_slot_sel;
-                fill_plan_tile_x_reg <= fill_request_tile_x;
-                fill_plan_tile_y_reg <= fill_request_tile_y;
-                fill_plan_row_width_reg <=
-                    (fill_request_tile_x == (cfg_tile_count_x_reg - 1'b1)) ? cfg_last_tile_width_reg : TILE_W;
-                fill_plan_tile_height_reg <=
-                    (fill_request_tile_y == (cfg_tile_count_y_reg - 1'b1)) ? cfg_last_tile_height_reg : TILE_H;
-                fill_plan_is_prefetch_reg <= fill_request_is_prefetch;
+                !fill_active_reg && !fill_plan_seed_valid_reg && !fill_plan_valid_reg && fill_request_present && !error) begin
+                fill_plan_seed_valid_reg <= 1'b1;
+                fill_plan_seed_slot_reg <= fill_request_slot_sel;
+                fill_plan_seed_tile_x_reg <= fill_request_tile_x;
+                fill_plan_seed_tile_y_reg <= fill_request_tile_y;
+                fill_plan_seed_is_prefetch_reg <= fill_request_is_prefetch;
                 if (miss_present) begin
                     stat_misses_reg <= stat_misses_reg + 1'b1;
                 end
@@ -529,6 +535,17 @@ module src_tile_cache #(
                     stat_prefetch_starts_reg <= stat_prefetch_starts_reg + 1'b1;
                     prefetch_pending_reg <= 1'b0;
                 end
+            end
+
+            if (!fill_active_reg && fill_plan_seed_valid_reg && !fill_plan_valid_reg && !error) begin
+                fill_plan_valid_reg <= 1'b1;
+                fill_plan_slot_reg <= fill_plan_seed_slot_reg;
+                fill_plan_tile_x_reg <= fill_plan_seed_tile_x_reg;
+                fill_plan_tile_y_reg <= fill_plan_seed_tile_y_reg;
+                fill_plan_row_width_reg <=
+                    (fill_plan_seed_tile_x_reg == (cfg_tile_count_x_reg - 1'b1)) ? cfg_last_tile_width_reg : TILE_W;
+                fill_plan_is_prefetch_reg <= fill_plan_seed_is_prefetch_reg;
+                fill_plan_seed_valid_reg <= 1'b0;
             end
 
             if (!fill_active_reg && fill_plan_valid_reg && !error) begin
@@ -539,7 +556,8 @@ module src_tile_cache #(
                 fill_row_idx_reg   <= '0;
                 fill_col_idx_reg   <= '0;
                 fill_row_width_reg <= fill_plan_row_width_reg;
-                fill_tile_height_reg <= fill_plan_tile_height_reg;
+                fill_tile_height_reg <=
+                    (fill_plan_tile_y_reg == (cfg_tile_count_y_reg - 1'b1)) ? cfg_last_tile_height_reg : TILE_H;
                 fill_is_prefetch_reg <= fill_plan_is_prefetch_reg;
                 fill_plan_valid_reg <= 1'b0;
                 slot_valid_reg[fill_plan_slot_reg]  <= 1'b0;

@@ -832,3 +832,318 @@ implementation 结果：
   - `sample_x1_reg -> fill_tile_height_reg`
   - `mix_frac_x_reg -> out_mix_reg`
 - 当前最差 slack 已逼近 `-0.241 ns ~ -0.215 ns`。
+
+### Round 50
+
+目标热点：
+- 继续压缩 `src_tile_cache` 中 `sample_y0 -> fill_plan_tile_height` 这组剩余热点。
+- 验证 fill-plan staging 是否已经把 `fill_row_width` 路径压到正 slack。
+
+操作：
+- 保持 `fill_plan` 两拍结构：
+  - 第一拍只锁存 fill plan
+  - 第二拍再真正装载 fill 工作寄存器
+- 重新跑 implementation，观察 `fill_plan_tile_height_reg` 与 `fill_plan_row_width_reg` 两组寄存器的差异。
+
+结果：
+- 用户最新 implementation 结果显示：
+  - `sample_y0_reg -> fill_plan_tile_height_reg[*]` 约为 `-0.010 ns`
+  - `sample_y0_reg -> fill_plan_row_width_reg[*]` 已转正，约为 `+0.105 ns`
+- 说明本轮优化已经把问题压缩到“最后 10ps 量级”的极小残余热点。
+- 当前设计已经非常接近 setup 完全收敛，剩余问题主要集中在 `fill_plan_tile_height` 这一个极小局部路径。
+
+### Round 51
+
+目标热点：
+- 继续清理 `sample_y0 -> fill_plan_tile_height` 这条最后的几十皮秒热点。
+- 避免在 fill-plan 阶段就计算 tile height。
+
+操作：
+- 在 `src_tile_cache.sv` 中取消 `fill_plan_tile_height_reg` 在 fill-plan 生成拍的直接计算。
+- fill-plan 阶段只锁存：
+  - `fill_plan_slot_reg`
+  - `fill_plan_tile_x_reg`
+  - `fill_plan_tile_y_reg`
+  - `fill_plan_row_width_reg`
+- 真正进入 fill active 的那一拍，再根据 `fill_plan_tile_y_reg` 计算并装载 `fill_tile_height_reg`。
+
+结果：
+- 顶层回归通过。
+- 这一步已经把 `fill_plan_tile_height` 的计算从 sample/fill 共享边界再后推一拍。
+- 下一步应重新跑 implementation，验证最后 `-0.010 ns` 量级热点是否被完全吃掉。
+
+### Round 52
+
+目标热点：
+- 把 `fill_plan_tile_height` 这条路径的 RTL 修改真正收尾，确认代码状态稳定可继续用于 implementation。
+
+操作：
+- 完成 `src_tile_cache.sv` 中 `fill_plan_tile_height` 相关路径的重构：
+  - fill-plan 生成拍不再直接计算 `fill_plan_tile_height_reg`
+  - fill 激活拍根据 `fill_plan_tile_y_reg` 和本地配置寄存器生成 `fill_tile_height_reg`
+- 重新执行顶层功能回归，确认修改后主链路行为保持正确。
+
+结果：
+- 顶层回归通过。
+- 当前代码状态已经完成“把刚才那个改完”的收尾动作，可以直接进入下一轮 implementation 验证。
+- 后续若这条路径仍是热点，再决定是否继续针对 `fill_plan_tile_height` 单独加拍，或转去处理新的最差路径。
+
+### Round 53
+
+目标热点：
+- 清理 `src_tile_cache.sv` 中 `fill_plan_tile_height_reg` 这类已不再参与主流程、但仍可能制造最后几十皮秒控制路径的残留寄存器。
+
+操作：
+- 删除 `fill_plan_tile_height_reg` 的声明。
+- 删除 reset 阶段对 `fill_plan_tile_height_reg` 的清零赋值。
+- 保留当前已经生效的做法：
+  - fill-plan 阶段只锁存 `fill_plan_tile_y_reg`
+  - 真正进入 fill active 的那一拍，再根据 `fill_plan_tile_y_reg` 生成 `fill_tile_height_reg`
+
+结果：
+- 顶层回归通过，`tb_image_geo_top completed`。
+- 这一步属于“最后几十皮秒清尾巴”的 RTL 清理，目的是消掉无意义寄存器对 setup/control 路径的干扰。
+- 下一步应重新跑 implementation，确认最后一组 `sample_y0 -> fill_plan_tile_height` / `fill_plan_tile_height_reg` 相关热点是否彻底消失。
+
+### Round 54
+
+目标热点：
+- 开始转向 `image_geo_axi_clk` 域，处理用户最新截图中的主热点：
+  - `issue_commit_valid_reg_reg_replica/C -> beats_inflight_reg[*]/D`
+  - `issue_commit_valid_reg_reg_replica/C -> FSM_sequential_state_reg_reg[*]/D`
+  - `bursts_inflight_reg[0]/C -> bursts_inflight_reg[*]/D`
+- 路径特征说明当前 `axi_burst_reader.sv` 中 issue commit 后的 inflight 计数更新仍然带着偏宽的加法链和控制扇出。
+
+RTL改动：
+- 在 [axi_burst_reader.sv](/C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_reader.sv) 中将仅用于 outstanding 统计的本地计数器按真实上限缩位宽：
+  - `beats_inflight_reg` / `beats_credit_reg` 改为 `BEAT_COUNT_W = clog2(MAX_OUTSTANDING_BEATS+1)`
+  - `bursts_inflight_reg` 改为 `BURSTS_COUNT_W = clog2(MAX_OUTSTANDING_BURSTS+1)`
+  - 不再继续用原来的 33bit `COUNT_W` 去承载最多 32/4 的小计数器，直接缩短无意义 carry 链。
+- 将 `AR handshake -> inflight/queue 更新` 从原来的 `issue_commit_valid_reg` 直接提交，拆成：
+  - `issue_commit_valid_reg`
+  - `issue_apply_valid_reg`
+  两级。
+- 现在 `ar_fire` 之后先锁存 `issue_commit_beats_reg`，下一拍再由 `issue_apply_valid_reg` 统一更新：
+  - `burst_beats_q`
+  - `words_requested_reg`
+  - `next_issue_addr_reg`
+  - `words_request_remaining_reg`
+  - `beats_inflight_reg`
+  - `bursts_inflight_reg`
+- 同时把 `can_issue_ar_calc` 加入 `!issue_apply_valid_reg` 约束，避免在 counters 尚未提交时提前按旧 credit 再发下一笔 AR。
+- 顺手修复了一个参数化问题：
+  - `issue_prep_beats_reg` 缩位宽后，`arlen <= issue_prep_beats_reg[7:0] - 1'b1` 在小 `BURST_MAX_LEN` 配置下会越界
+  - 已改成参数安全的 `arlen <= issue_prep_beats_reg - 1'b1`
+
+验证结果：
+- 模块级回归 [tb_ddr_read_engine.sv](/C:/Users/huawei/Desktop/project_codex/rtl/sim/tb_ddr_read_engine.sv) 通过。
+- 仿真命令：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 ddr_read_engine`
+- 首次回归曾暴露 `issue_prep_beats_reg[7:0]` 越界导致的超时问题，修复后重新回归通过。
+
+时序判断：
+- 这轮修改的主要目的不是改变协议行为，而是把截图里最集中的两类 setup 热点一起切掉：
+  - 过宽的 outstanding counter 加法链
+  - `issue_commit_valid` 直接驱动 inflight 更新与状态相关控制
+- 还需要重新跑 implementation 才能确认 `image_geo_axi_clk` 的真实 WNS 改善幅度。
+
+### Round 55
+
+目标热点：
+- 用户重新跑 implementation 后发现：
+  - `image_geo_core_clk` 回退到 `sample_x1_reg -> fill_plan_row_width_reg[*]`，约 `-0.337 ns`
+  - `image_geo_axi_clk` 也仍有明显违例，且热点转为：
+    - `words_request_remaining_reg -> issue_seed_valid_reg`
+    - `issue_calc_words_remaining_reg -> issue_prep_beats_reg`
+    - `words_write_remaining_reg -> aw_prep_len_reg`
+- 说明 Round 54 虽然处理掉了原先的 `issue_commit/inflight` 热点，但没有击中新的主路径，而且实现层面还把 `core_clk` 的 sample/fill 边界重新放大。
+
+RTL改动：
+- 在 [axi_burst_reader.sv](/C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_reader.sv) 中撤回 Round 54 的 `issue_apply_valid_reg` 额外提交级，避免继续增加读侧局部控制面积和实现扰动。
+- 保留 Round 54 中低风险、确定有益的部分：
+  - `beats_inflight_reg / bursts_inflight_reg / beats_credit_reg` 缩位宽
+  - 参数安全的 `arlen <= issue_prep_beats_reg - 1'b1`
+- 进一步针对当前新热点补刀：
+  - 新增 `request_remaining_nonzero_reg`
+  - 新增 `next_issue_words_remaining_limited_reg`
+  - 新增 `next_issue_words_to_4kb_limited_reg`
+  - 新增 `limit_burst_words()`，把宽 `remaining` 计数先截成 `BURST_COUNT_W` 的局部寄存器，再送到 issue pipeline
+  - `issue_gate_words_remaining_reg / issue_plan_words_remaining_reg / issue_calc_words_remaining_reg / issue_calc_words_to_4kb_reg` 全部改成窄位宽，只服务于 burst 规划本身
+  - `can_issue_ar_calc` 不再直接吃宽 `words_request_remaining_reg` 的 burst 计算链，而是改看 `request_remaining_nonzero_reg`
+- 在 [axi_burst_writer.sv](/C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_writer.sv) 中同步做写侧同类优化：
+  - 新增 `BURST_COUNT_W`
+  - 新增 `words_write_remaining_limited_reg`
+  - 新增 `next_write_words_to_4kb_limited_reg`
+  - `burst_words_reg / burst_sent_words_reg / burst_words_calc` 改成窄位宽
+  - `aw_prep_len_reg` 改为从窄位宽 `burst_words_calc` 生成
+  - 修复参数化问题：`aw_prep_len_reg <= burst_words_calc - 1'b1`，不再固定切 `[7:0]`
+- 在 [src_tile_cache.sv](/C:/Users/huawei/Desktop/project_codex/rtl/buffer/src_tile_cache.sv) 中为 fill-plan 再前插一拍 seed 级：
+  - 新增 `fill_plan_seed_valid_reg`
+  - 新增 `fill_plan_seed_slot_reg`
+  - 新增 `fill_plan_seed_tile_x_reg`
+  - 新增 `fill_plan_seed_tile_y_reg`
+  - 新增 `fill_plan_seed_is_prefetch_reg`
+  - 第 1 拍只锁存 fill 请求元信息
+  - 第 2 拍才根据 `fill_plan_seed_tile_x_reg` 计算 `fill_plan_row_width_reg`
+- 这一步的目的就是把当前重新冒头的：
+  - `sample_x1_reg -> fill_plan_row_width_reg`
+  再重新切开，避免 sample/fill 边界直接相连。
+
+验证结果：
+- 模块级回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 ddr_read_engine`
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 ddr_write_engine`
+- 顶层回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 image_geo_top`
+- 本轮调试过程中，写侧回归还额外暴露了一个参数化问题：
+  - `burst_words_calc[7:0]` 在小 `BURST_MAX_LEN` 配置下越界，且导致 `WLAST mismatch`
+  - 修复为参数安全写法后回归恢复通过
+
+时序判断：
+- 这一轮属于“承认 Round 54 实现结果不理想后，做定向回撤与重新补刀”。
+- 当前 RTL 的预期是：
+  - `core_clk` 重新压回 `sample_x1 -> fill_plan_row_width` 之前的状态
+  - `axi_clk` 不再让宽 `remaining` 计数直接顶到 `issue_seed/issue_prep/aw_prep_len`
+- 但真实改善幅度仍需要新的 implementation 结果确认。
+
+### Round 56
+
+目标热点：
+- 新 implementation 结果显示两域都继续收敛，但仍有残余违例：
+  - `image_geo_core_clk` 约 `-0.053 ns`
+  - 热点转为 `rotate_core_bilinear` 初始化链：
+    - `step_x_x_reg -> row0_x_mul0_reg`
+  - `image_geo_axi_clk` 约 `-0.657 ns`
+  - 热点集中在读侧：
+    - `issue_commit_beats_reg -> next_issue_words_to_4kb_limited_reg`
+    - `words_request_remaining_reg -> next_issue_words_remaining_limited_reg`
+- 这说明上一轮已经把 `sample_x1 -> fill_plan_row_width` 基本压回去，但读侧新引入的 `*_limited_reg` 自己又成了瓶颈。
+
+RTL改动：
+- 在 [rotate_core_bilinear.sv](/C:/Users/huawei/Desktop/project_codex/rtl/core/rotate_core_bilinear.sv) 中，为 `row0_x` 初始化再插入一个专用 operand prep 级：
+  - 新增状态 `S_ROW0_X_PREP`
+  - 新增本地乘法输入寄存器：
+    - `row0_x_dst_cx_mul_reg`
+    - `row0_x_dst_cy_mul_reg`
+    - `row0_x_step_x_x_mul_reg`
+    - `row0_x_step_x_y_mul_reg`
+- 现在流程改为：
+  - `S_STEP_YY`
+  - `S_ROW0_X_PREP`
+  - `S_ROW0_X_MUL`
+  - `S_ROW0_X_SUM`
+- 目的就是把当前只剩几十皮秒的：
+  - `step_x_x -> row0_x_mul0`
+  再切开一拍，避免 `step_x_x` 直接驱动 `row0_x` 初始化乘法器输入。
+- 在 [axi_burst_reader.sv](/C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_reader.sv) 中进一步简化读侧 issue pipeline：
+  - 删除：
+    - `next_issue_words_remaining_limited_reg`
+    - `next_issue_words_to_4kb_limited_reg`
+  - 不再把“limited 值”做成额外状态寄存器
+  - 改为在真正进入：
+    - `issue_gate`
+    - `issue_plan`
+    两级时，按需用 `limit_burst_words(...)` 从全宽计数器截位
+- 这样直接去掉了这轮 implementation 中最差的两类路径终点：
+  - `*_limited_reg/D`
+  - `*_limited_reg/R`
+- `can_issue_ar_calc` 仍然只看 `request_remaining_nonzero_reg`，继续避免宽 burst 计算链重新回到 seed 发起条件。
+
+验证结果：
+- 模块级回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 ddr_read_engine`
+- 顶层回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 image_geo_top`
+
+时序判断：
+- 这一轮属于“针对已经收敛到最后 0.x ns 的局部热点继续精修”。
+- 预期收益方向是：
+  - `core_clk`：继续冲掉 `row0_x` 初始化链最后几十皮秒
+  - `axi_clk`：把当前读侧 `*_limited_reg` 相关热点整体移除
+- 真实改善幅度仍以新的 implementation 结果为准。
+
+### Round 57
+
+目标热点：
+- 用户新 implementation 结果显示：
+  - `image_geo_core_clk` 已经转正，约 `+0.230 ns`，当前不再作为主矛盾
+  - `image_geo_axi_clk` 继续收敛到最后几十皮秒，但热点转移到写侧：
+    - `next_write_words_to_4kb_reg -> next_write_words_to_4kb_limited_reg`
+    - `words_write_remaining_reg -> words_write_remaining_limited_reg`
+- 这与上一轮读侧的情况一致，说明写侧引入的 `*_limited_reg` 现在也成了最后的 setup 终点。
+
+RTL改动：
+- 本轮刻意**不修改** [rotate_core_bilinear.sv](/C:/Users/huawei/Desktop/project_codex/rtl/core/rotate_core_bilinear.sv)，避免把已经转正的 `core_clk` 域重新扰动回违例。
+- 在 [axi_burst_writer.sv](/C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_writer.sv) 中按与读侧相同的思路继续简化：
+  - 删除：
+    - `words_write_remaining_limited_reg`
+    - `next_write_words_to_4kb_limited_reg`
+  - 新增组合截位信号：
+    - `words_write_remaining_limited_calc`
+    - `next_write_words_to_4kb_limited_calc`
+  - `burst_words_calc` 现在直接由：
+    - `limit_burst_words(words_write_remaining_reg)`
+    - `limit_burst_words(next_write_words_to_4kb_reg)`
+    组合得到
+  - `S_IDLE` / `WDATA` 中不再维护写侧 `*_limited_reg` 状态
+- 这样做的目的就是把当前最差的两类写侧热点终点整体删掉，而不是继续围着它们补寄存器。
+
+验证结果：
+- 模块级回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 ddr_write_engine`
+- 顶层回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 image_geo_top`
+
+时序判断：
+- 当前策略是：
+  - `core_clk` 先稳住，不追求继续动它
+  - 只集中收尾 `axi_clk` 写侧最后几十皮秒
+- 下一步需要新的 implementation 结果确认：
+  - 写侧 `*_limited_reg` 相关热点是否已经消失
+  - `core_clk` 是否保持正 slack、没有反弹
+
+### Round 58
+
+目标热点：
+- 用户新 implementation 结果表明：
+  - `core_clk` 仍保持正 slack，没有反弹
+  - 但 `axi_clk` 反而明显变差，热点重新回到了写侧宽计数器直达 burst 配置链：
+    - `words_write_remaining_reg -> aw_prep_len_reg`
+    - `words_write_remaining_reg -> burst_words_reg`
+    - `next_write_words_to_4kb_reg -> aw_prep_len_reg`
+- 这说明 Round 57 “完全去掉写侧 limited 状态寄存器、只留组合截位”的做法虽然逻辑更简单，但把宽 remaining 计数再次直接推回了 `aw_prep_len / burst_words` 的 D 端。
+
+RTL改动：
+- 本轮继续坚持：
+  - **不修改** `core_clk` 相关 RTL
+  - 只处理 [axi_burst_writer.sv](/C:/Users/huawei/Desktop/project_codex/rtl/axi/axi_burst_writer.sv)
+- 将写侧 burst 计划改成明确的两拍结构：
+  - 新增状态 `S_PREP_LIMIT`
+  - 保留 `S_PREP`
+- 恢复并重新引入写侧局部限幅寄存器：
+  - `words_write_remaining_limited_reg`
+  - `next_write_words_to_4kb_limited_reg`
+- 新的 burst 规划流程为：
+  - `S_PREP_LIMIT`
+    - 先把 `words_write_remaining_reg / next_write_words_to_4kb_reg` 限幅并锁存
+  - `S_PREP`
+    - 再根据这两个窄位宽限幅寄存器计算 `burst_words_reg`
+    - 同拍生成 `aw_prep_len_reg`
+- 同时将启动和每次 `BRESP` 后的下一轮 burst 准备，都改为先进入 `S_PREP_LIMIT`，而不是直接进入 `S_PREP`
+- 这样做的目的就是重新切开：
+  - `wide remaining counter -> aw_prep_len`
+  - `wide remaining counter -> burst_words`
+  这两组当前最差路径，但避免回到 Round 57 的“纯组合截位”直通形式。
+
+验证结果：
+- 模块级回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 ddr_write_engine`
+- 顶层回归通过：
+  - `powershell -ExecutionPolicy Bypass -File .\tools\run-module-sim.ps1 image_geo_top`
+
+时序判断：
+- 这一轮的核心不是继续删逻辑，而是修正 Round 57 的判断偏差：
+  - 对写侧最后这条链来说，**适度增加一拍专用 burst planning staging** 比“完全组合化”更有效
+- 下一步新的 implementation 结果应重点确认：
+  - `axi_clk` 的 `aw_prep_len / burst_words` 热点是否重新回落
+  - `core_clk` 是否继续保持正 slack、不反弹

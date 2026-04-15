@@ -33,10 +33,12 @@ module axi_burst_writer #(
     localparam int BYTE_W       = DATA_W / 8;
     localparam int AXI_SIZE_W   = (BYTE_W > 1) ? $clog2(BYTE_W) : 1;
     localparam int COUNT_W      = 33;
+    localparam int BURST_COUNT_W = (BURST_MAX_LEN > 1) ? $clog2(BURST_MAX_LEN + 1) : 1;
     localparam logic [2:0] AXI_SIZE = $clog2(BYTE_W);
 
     typedef enum logic [2:0] {
         S_IDLE,
+        S_PREP_LIMIT,
         S_PREP,
         S_AWCFG,
         S_AW,
@@ -53,8 +55,10 @@ module axi_burst_writer #(
     logic [ADDR_W-1:0]  next_write_addr_reg;
     logic [COUNT_W-1:0] words_write_remaining_reg;
     logic [COUNT_W-1:0] next_write_words_to_4kb_reg;
-    logic [COUNT_W-1:0] burst_words_reg;
-    logic [COUNT_W-1:0] burst_sent_words_reg;
+    logic [BURST_COUNT_W-1:0] words_write_remaining_limited_reg;
+    logic [BURST_COUNT_W-1:0] next_write_words_to_4kb_limited_reg;
+    logic [BURST_COUNT_W-1:0] burst_words_reg;
+    logic [BURST_COUNT_W-1:0] burst_sent_words_reg;
     logic [ADDR_W-1:0]  aw_prep_addr_reg;
     logic [7:0]         aw_prep_len_reg;
 
@@ -68,11 +72,21 @@ module axi_burst_writer #(
 
     logic [ADDR_W-1:0] current_burst_addr_calc;
     logic [COUNT_W-1:0] words_remaining_calc;
-    logic [COUNT_W-1:0] burst_words_calc;
+    logic [BURST_COUNT_W-1:0] burst_words_calc;
     logic aw_fire;
     logic w_fire;
     logic b_fire;
     logic burst_last_word;
+
+    function automatic logic [BURST_COUNT_W-1:0] limit_burst_words(
+        input logic [COUNT_W-1:0] words
+    );
+        if (words >= BURST_MAX_LEN) begin
+            limit_burst_words = BURST_COUNT_W'(BURST_MAX_LEN);
+        end else begin
+            limit_burst_words = BURST_COUNT_W'(words);
+        end
+    endfunction
 
     initial begin
         if (DATA_W % 8 != 0) $error("axi_burst_writer requires DATA_W to be byte aligned.");
@@ -85,7 +99,12 @@ module axi_burst_writer #(
 
     assign current_burst_addr_calc = next_write_addr_reg;
     assign words_remaining_calc    = words_write_remaining_reg;
-    assign burst_words_calc        = calc_burst_words(words_remaining_calc, next_write_words_to_4kb_reg, BURST_MAX_LEN, words_remaining_calc);
+    assign burst_words_calc        = BURST_COUNT_W'(calc_burst_words(
+        words_write_remaining_limited_reg,
+        next_write_words_to_4kb_limited_reg,
+        BURST_MAX_LEN,
+        words_write_remaining_limited_reg
+    ));
     assign burst_last_word         = (burst_sent_words_reg == burst_words_reg - 1'b1);
 
     assign word_ready   = (state_reg == S_WDATA) && !word_buf_valid_reg;
@@ -104,6 +123,8 @@ module axi_burst_writer #(
             next_write_addr_reg   <= '0;
             words_write_remaining_reg <= '0;
             next_write_words_to_4kb_reg <= '0;
+            words_write_remaining_limited_reg <= '0;
+            next_write_words_to_4kb_limited_reg <= '0;
             burst_words_reg       <= '0;
             burst_sent_words_reg  <= '0;
             aw_prep_addr_reg      <= '0;
@@ -170,8 +191,21 @@ module axi_burst_writer #(
                         next_write_addr_reg   <= align_addr(task_addr, AXI_SIZE_W);
                         words_write_remaining_reg <= calc_total_words(task_byte_count, task_addr[AXI_SIZE_W-1:0], BYTE_W);
                         next_write_words_to_4kb_reg <= calc_words_to_4kb(align_addr(task_addr, AXI_SIZE_W), BYTE_W);
+                        words_write_remaining_limited_reg <= '0;
+                        next_write_words_to_4kb_limited_reg <= '0;
                         burst_sent_words_reg  <= '0;
-                        state_reg             <= S_PREP;
+                        state_reg             <= S_PREP_LIMIT;
+                    end
+                end
+
+                S_PREP_LIMIT: begin
+                    if (words_remaining_calc == 0) begin
+                        error_latched_reg <= 1'b1;
+                        state_reg   <= S_DONE;
+                    end else begin
+                        words_write_remaining_limited_reg <= limit_burst_words(words_write_remaining_reg);
+                        next_write_words_to_4kb_limited_reg <= limit_burst_words(next_write_words_to_4kb_reg);
+                        state_reg <= S_PREP;
                     end
                 end
 
@@ -183,7 +217,7 @@ module axi_burst_writer #(
                         burst_words_reg      <= burst_words_calc;
                         burst_sent_words_reg <= '0;
                         aw_prep_addr_reg     <= current_burst_addr_calc;
-                        aw_prep_len_reg      <= burst_words_calc[7:0] - 1'b1;
+                        aw_prep_len_reg      <= burst_words_calc - 1'b1;
                         state_reg            <= S_AWCFG;
                     end
                 end
@@ -220,17 +254,21 @@ module axi_burst_writer #(
                     end
 
                     if (w_fire) begin
+                        logic [COUNT_W-1:0] words_write_remaining_after_fire;
+                        logic [COUNT_W-1:0] next_write_words_to_4kb_after_fire;
                         m_axi_wr.wvalid       <= 1'b0;
                         burst_sent_words_reg  <= burst_sent_words_reg + 1'b1;
                         words_sent_total_reg  <= words_sent_total_reg + 1'b1;
                         next_write_addr_reg   <= next_write_addr_reg + (1'b1 << AXI_SIZE_W);
-                        words_write_remaining_reg <= words_write_remaining_reg - 1'b1;
+                        words_write_remaining_after_fire = words_write_remaining_reg - 1'b1;
+                        words_write_remaining_reg <= words_write_remaining_after_fire;
                         if (next_write_words_to_4kb_reg == 1) begin
                             next_write_words_to_4kb_reg <= 4096 / BYTE_W;
+                            next_write_words_to_4kb_after_fire = 4096 / BYTE_W;
                         end else begin
-                            next_write_words_to_4kb_reg <= next_write_words_to_4kb_reg - 1'b1;
+                            next_write_words_to_4kb_after_fire = next_write_words_to_4kb_reg - 1'b1;
+                            next_write_words_to_4kb_reg <= next_write_words_to_4kb_after_fire;
                         end
-
                         if (burst_last_word) begin
                             m_axi_wr.bready <= 1'b1;
                             state_reg       <= S_BRESP;
@@ -248,7 +286,7 @@ module axi_burst_writer #(
                         if ((m_axi_wr.bresp != 2'b00) || (words_write_remaining_reg == 0)) begin
                             state_reg <= S_DONE;
                         end else begin
-                            state_reg <= S_PREP;
+                            state_reg <= S_PREP_LIMIT;
                         end
                     end
                 end

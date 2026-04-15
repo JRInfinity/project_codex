@@ -64,6 +64,7 @@ module rotate_core_bilinear #(
         S_STEP_YX,
         S_STEP_XY,
         S_STEP_YY,
+        S_ROW0_X_PREP,
         S_ROW0_X_MUL,
         S_ROW0_X_SUM,
         S_ROW0_X_COMMIT,
@@ -194,6 +195,10 @@ module rotate_core_bilinear #(
     logic [MIX_W-1:0]          out_mix_calc;
     logic signed [INIT_MUL_W-1:0] row0_x_mul0_reg;
     logic signed [INIT_MUL_W-1:0] row0_x_mul1_reg;
+    logic signed [COORD_W-1:0] row0_x_dst_cx_mul_reg;
+    logic signed [COORD_W-1:0] row0_x_dst_cy_mul_reg;
+    logic signed [COORD_W-1:0] row0_x_step_x_x_mul_reg;
+    logic signed [COORD_W-1:0] row0_x_step_x_y_mul_reg;
     logic signed [INIT_MUL_W-1:0] row0_y_mul0_reg;
     logic signed [INIT_MUL_W-1:0] row0_y_mul1_reg;
     logic signed [INIT_MUL_W-1:0] row0_x_base_wide_reg;
@@ -326,7 +331,7 @@ module rotate_core_bilinear #(
         .next_y(row_adv_next_y)
     );
 
-    xpm_memory_sdpram #(
+    xpm_memory_sdpram #( // 这是Xilinx单端口RAM生成器IP核的SystemVerilog版本，参数配置为适合存储行基地址的预计算结果
         .ADDR_WIDTH_A        (DST_Y_W),
         .ADDR_WIDTH_B        (DST_Y_W),
         .AUTO_SLEEP_TIME     (0),
@@ -494,6 +499,10 @@ module rotate_core_bilinear #(
             div_count_reg     <= '0;
             row0_x_mul0_reg <= '0;
             row0_x_mul1_reg <= '0;
+            row0_x_dst_cx_mul_reg <= '0;
+            row0_x_dst_cy_mul_reg <= '0;
+            row0_x_step_x_x_mul_reg <= '0;
+            row0_x_step_x_y_mul_reg <= '0;
             row0_y_mul0_reg <= '0;
             row0_y_mul1_reg <= '0;
             row0_x_base_wide_reg <= '0;
@@ -525,7 +534,7 @@ module rotate_core_bilinear #(
                             cfg_angle_sin_q16_reg <= angle_sin_q16;
                             cfg_src_x_last_reg <= src_w[SRC_X_W-1:0] - 1'b1;
                             cfg_src_y_last_reg <= src_h[SRC_Y_W-1:0] - 1'b1;
-                            cfg_src_x_max_q16_reg <= ($signed({1'b0, src_w}) - 1) <<< FRAC_W;
+                            cfg_src_x_max_q16_reg <= ($signed({1'b0, src_w}) - 1) <<< FRAC_W; // 这里将最大坐标转换为Q16格式，乘以2^FRAC_W
                             cfg_src_y_max_q16_reg <= ($signed({1'b0, src_h}) - 1) <<< FRAC_W;
                             state_reg      <= S_DIV_X_INIT;
                         end
@@ -533,8 +542,8 @@ module rotate_core_bilinear #(
                 end
 
                 S_DIV_X_INIT: begin
-                    div_dividend_reg  <= 32'sh0001_0000 * $signed({1'b0, cfg_src_w_reg});
-                    div_divisor_reg   <= {16'd0, cfg_dst_w_reg};
+                    div_dividend_reg  <= 32'sh0001_0000 * $signed({1'b0, cfg_src_w_reg}); // 这里将被除数设置为src_w的Q16格式，即src_w乘以2^FRAC_W
+                    div_divisor_reg   <= {16'd0, cfg_dst_w_reg}; // 这里将除数设置为dst_w的整数格式，低16位为0
                     div_quotient_reg  <= '0;
                     div_remainder_reg <= '0;
                     div_count_reg     <= 6'd32;
@@ -612,12 +621,20 @@ module rotate_core_bilinear #(
                 S_STEP_YY: begin
                     step_y_y_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
                     row0_step_y_y_hold_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
-                    state_reg    <= S_ROW0_X_MUL;
+                    state_reg    <= S_ROW0_X_PREP;
+                end
+
+                S_ROW0_X_PREP: begin
+                    row0_x_dst_cx_mul_reg   <= row0_dst_cx_hold_reg;
+                    row0_x_dst_cy_mul_reg   <= row0_dst_cy_hold_reg;
+                    row0_x_step_x_x_mul_reg <= row0_step_x_x_hold_reg;
+                    row0_x_step_x_y_mul_reg <= row0_step_x_y_hold_reg;
+                    state_reg               <= S_ROW0_X_MUL;
                 end
 
                 S_ROW0_X_MUL: begin
-                    row0_x_mul0_reg <= $signed(row0_dst_cx_hold_reg) * $signed(row0_step_x_x_hold_reg);
-                    row0_x_mul1_reg <= $signed(row0_dst_cy_hold_reg) * $signed(row0_step_x_y_hold_reg);
+                    row0_x_mul0_reg <= $signed(row0_x_dst_cx_mul_reg) * $signed(row0_x_step_x_x_mul_reg);
+                    row0_x_mul1_reg <= $signed(row0_x_dst_cy_mul_reg) * $signed(row0_x_step_x_y_mul_reg);
                     state_reg       <= S_ROW0_X_SUM;
                 end
 
