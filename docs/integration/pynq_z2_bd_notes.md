@@ -34,6 +34,10 @@ Use two `proc_sys_reset` blocks:
 
 Connect:
 
+- `ps_0/FCLK_RESET0_N` -> `reset_inv_0/Op1`
+- `reset_inv_0/Res` -> `clk_wiz_0/reset`
+- `reset_inv_0/Res` -> `rst_axi_0/ext_reset_in`
+- `reset_inv_0/Res` -> `rst_core_0/ext_reset_in`
 - `rst_axi_0/peripheral_aresetn` -> `image_geo_top/axi_rstn`
 - `rst_core_0/peripheral_aresetn` -> `image_geo_top/core_rstn`
 

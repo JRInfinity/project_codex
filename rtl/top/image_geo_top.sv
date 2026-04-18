@@ -44,6 +44,7 @@ module image_geo_top #(
     output logic                         s_axi_ctrl_rvalid,
     input  logic                         s_axi_ctrl_rready,
 
+    // DDR读口
     output logic [AXI_ID_W-1:0]          m_axi_rd_arid,
     output logic [AXI_ADDR_W-1:0]        m_axi_rd_araddr,
     output logic [7:0]                   m_axi_rd_arlen,
@@ -63,6 +64,7 @@ module image_geo_top #(
     input  logic                         m_axi_rd_rvalid,
     output logic                         m_axi_rd_rready,
 
+    // DDR写口
     output logic [AXI_ID_W-1:0]          m_axi_wr_awid,
     output logic [AXI_ADDR_W-1:0]        m_axi_wr_awaddr,
     output logic [7:0]                   m_axi_wr_awlen,

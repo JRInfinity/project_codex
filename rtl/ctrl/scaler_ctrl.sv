@@ -115,10 +115,12 @@ module scaler_ctrl #(
         endcase
     end
 
+    // 启动第一行的读取
     assign launch_first_row = (state_reg == S_RUN) &&
         (row_started_count_reg == 0) &&
         !wb_busy;
 
+    // 启动下一行的读取
     assign launch_next_row = (state_reg == S_RUN) &&
         pending_row_start_reg &&
         (row_started_count_reg < dst_h_reg) &&
@@ -128,11 +130,13 @@ module scaler_ctrl #(
         (pending_row_write_count_reg != 0) &&
         !write_busy;
 
+    // 启动计算核心
     assign launch_core = (state_reg == S_RUN) &&
         (row_started_count_reg == 0) &&
         !core_busy &&
         !core_done_seen_reg;
 
+    // 计算结束，状态机进入S_DONE
     assign final_write_done = (state_reg == S_RUN) &&
         write_done &&
         core_done_seen_reg &&
@@ -143,7 +147,7 @@ module scaler_ctrl #(
     assign error = (state_reg == S_ERROR);
 
     assign core_start      = launch_core;
-    assign wb_start        = launch_first_row || launch_next_row;
+    assign wb_start        = launch_first_row || launch_next_row; // 只要有行启动就启动写到row_out_buffer
     assign wb_pixel_count  = dst_w_reg;
     assign wb_out_start    = launch_write_row;
     assign write_start      = launch_write_row;

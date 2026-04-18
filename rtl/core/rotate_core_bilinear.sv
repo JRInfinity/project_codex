@@ -518,7 +518,8 @@ module rotate_core_bilinear #(
             case (state_reg)
                 S_IDLE: begin
                     pix_valid_reg <= 1'b0;
-                    error         <= 1'b0;
+                    error         <= 1'b0;  
+                    // 开始 并进行初始化
                     if (start) begin
                         if ((src_w == 0) || (src_h == 0) || (dst_w == 0) || (dst_h == 0)) begin
                             error    <= 1'b1;
@@ -541,6 +542,7 @@ module rotate_core_bilinear #(
                     end
                 end
 
+                // 计算缩放因子除法初始化
                 S_DIV_X_INIT: begin
                     div_dividend_reg  <= 32'sh0001_0000 * $signed({1'b0, cfg_src_w_reg}); // 这里将被除数设置为src_w的Q16格式，即src_w乘以2^FRAC_W
                     div_divisor_reg   <= {16'd0, cfg_dst_w_reg}; // 这里将除数设置为dst_w的整数格式，低16位为0
@@ -550,6 +552,7 @@ module rotate_core_bilinear #(
                     state_reg         <= S_DIV_X_RUN;
                 end
 
+                // 计算缩放因子
                 S_DIV_X_RUN: begin
                     div_dividend_reg  <= div_dividend_next_calc;
                     div_quotient_reg  <= div_quotient_next_calc;
@@ -562,6 +565,7 @@ module rotate_core_bilinear #(
                     end
                 end
 
+                // 计算缩放因子除法初始化
                 S_DIV_Y_INIT: begin
                     div_dividend_reg  <= 32'sh0001_0000 * $signed({1'b0, cfg_src_h_reg});
                     div_divisor_reg   <= {16'd0, cfg_dst_h_reg};
@@ -571,6 +575,7 @@ module rotate_core_bilinear #(
                     state_reg         <= S_DIV_Y_RUN;
                 end
 
+                // 计算缩放因子
                 S_DIV_Y_RUN: begin
                     div_dividend_reg  <= div_dividend_next_calc;
                     div_quotient_reg  <= div_quotient_next_calc;
@@ -583,6 +588,7 @@ module rotate_core_bilinear #(
                     end
                 end
 
+                // 计算旋转中心
                 S_CENTER: begin
                     src_cx_q16_reg <= ($signed({1'b0, cfg_src_w_reg}) - 1) <<< (FRAC_W-1);
                     src_cy_q16_reg <= ($signed({1'b0, cfg_src_h_reg}) - 1) <<< (FRAC_W-1);
@@ -595,35 +601,42 @@ module rotate_core_bilinear #(
                     state_reg           <= S_STEP_XX;
                 end
 
+                // 计算步进量：当输出图x加1时，源图坐标x增量step_x_x
                 S_STEP_XX: begin
                     step_x_x_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_x_q16_reg)) >>> FRAC_W;
                     row0_step_x_x_hold_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_x_q16_reg)) >>> FRAC_W;
                     state_reg    <= S_STEP_YX_MUL;
                 end
 
+                // 计算步进量：当输出图x加1时，源图坐标y增量step_y_x的乘法中间结果
+                // 有负号加入，故插入一级流水
                 S_STEP_YX_MUL: begin
                     step_y_x_mul_reg <= $signed(cfg_angle_sin_q16_reg) * $signed(scale_x_q16_reg);
                     state_reg        <= S_STEP_YX;
                 end
 
+                // 计算步进量：当输出图x加1时，源图坐标y增量step_y_x
                 S_STEP_YX: begin
                     step_y_x_reg <= -($signed(step_y_x_mul_reg) >>> FRAC_W);
                     row0_step_y_x_hold_reg <= -($signed(step_y_x_mul_reg) >>> FRAC_W);
                     state_reg <= S_STEP_XY;
                 end
 
+                // 计算步进量：当输出图y加1时，源图坐标x增量step_x_y
                 S_STEP_XY: begin
                     step_x_y_reg <= ($signed(cfg_angle_sin_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
                     row0_step_x_y_hold_reg <= ($signed(cfg_angle_sin_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
                     state_reg    <= S_STEP_YY;
                 end
 
+                // 计算步进量：当输出图y加1时，源图坐标x增量step_y_y
                 S_STEP_YY: begin
                     step_y_y_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
                     row0_step_y_y_hold_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
                     state_reg    <= S_ROW0_X_PREP;
                 end
 
+                // 下面几个状态计算第0行第0列的目标像素对应源图坐标，作为后续计算基点
                 S_ROW0_X_PREP: begin
                     row0_x_dst_cx_mul_reg   <= row0_dst_cx_hold_reg;
                     row0_x_dst_cy_mul_reg   <= row0_dst_cy_hold_reg;
@@ -666,6 +679,7 @@ module rotate_core_bilinear #(
                     state_reg <= S_PRECALC_INIT;
                 end
 
+                // 先把每一行的第一个起始源图坐标算出来，存到ram里
                 S_PRECALC_INIT: begin
                     precalc_base_x_reg  <= row0_x_base_reg;
                     precalc_base_y_reg  <= row0_y_base_reg;
@@ -689,6 +703,7 @@ module rotate_core_bilinear #(
                     end
                 end
 
+                // 算后续各行
                 S_PRECALC_STORE: begin
                     precalc_base_x_reg <= row_x_next_reg;
                     precalc_base_y_reg <= row_y_next_reg;
@@ -700,6 +715,7 @@ module rotate_core_bilinear #(
                     end
                 end
 
+                // 给BRAM发读地址
                 S_LOAD0: begin
                     state_reg  <= S_LOAD1;
                 end
@@ -708,10 +724,12 @@ module rotate_core_bilinear #(
                     state_reg  <= S_LOAD2;
                 end
 
+                // 把 row_base_rd_data 分别装进 cur_x_reg 和 cur_y_reg
                 S_LOAD2: begin
                     state_reg  <= S_CLAMP;
                 end
 
+                // 坐标钳位将其限制在源图坐标内
                 S_CLAMP: begin
                     clamp_x_reg <= clamped_x_q16_calc;
                     clamp_y_reg <= clamped_y_q16_calc;
@@ -728,12 +746,16 @@ module rotate_core_bilinear #(
                     state_reg     <= S_REQ;
                 end
 
+                // 向cache发2x2采样请求
+                // 只有在sample_req_ready也为1（cache里真的有所请求的四个像素）时，
+                // 这次请求才真正被cache接受，然后状态进入S_WAIT
                 S_REQ: begin
                     if (sample_req_valid && sample_req_ready) begin
                         state_reg <= S_WAIT;
                     end
                 end
 
+                // 将cache给的4个点拉进来
                 S_WAIT: begin
                     if (sample_rsp_valid) begin
                         sample_p00_reg <= sample_p00;
@@ -750,6 +772,7 @@ module rotate_core_bilinear #(
                     end
                 end
 
+                // 横向乘法
                 S_MIX0_MUL: begin
                     top_mul0_reg <= top_mul0_calc;
                     top_mul1_reg <= top_mul1_calc;
@@ -758,14 +781,16 @@ module rotate_core_bilinear #(
                     state_reg    <= S_MIX0_SUM;
                 end
 
+                // 把上下两行分别横向混合
                 S_MIX0_SUM: begin
                     top_mix_reg <= top_mix_calc;
                     bot_mix_reg <= bot_mix_calc;
                     state_reg   <= S_MIX1;
                 end
 
+                // 纵向混合
                 S_MIX1: begin
-                    out_mix_reg <= out_mix_calc;
+                    out_mix_reg <= out_mix_calc; // out_mix_reg此即为输出像素
                     state_reg   <= S_OUT;
                 end
 
@@ -780,14 +805,17 @@ module rotate_core_bilinear #(
                         if (last_col) begin
                             row_done <= 1'b1;
                             if (last_row) begin
+                                // 是最后一行最后一列
                                 done     <= 1'b1;
                                 state_reg <= S_IDLE;
                             end else begin
+                                // 是本行最后一个像素，但不是最后一行
                                 dst_x_reg      <= '0;
                                 dst_y_reg      <= dst_y_reg + 1'b1;
                                 state_reg      <= S_LOAD0;
                             end
                         end else begin
+                            // 不是本行最后一个像素
                             dst_x_reg <= dst_x_reg + 1'b1;
                             state_reg <= S_CLAMP;
                         end

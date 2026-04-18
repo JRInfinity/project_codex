@@ -22,7 +22,8 @@ module row_out_buffer #(
     input  logic                           in_valid,
     output logic                           in_ready,
 
-    input  logic                           out_start,
+    // 给DDR读
+    input  logic                           out_start, // ctrl模块给出
     output logic [PIXEL_W-1:0]             out_data,
     output logic                           out_valid,
     input  logic                           out_ready,
@@ -34,10 +35,12 @@ module row_out_buffer #(
     localparam int BUF_SEL_W   = (BUF_NUM > 1) ? $clog2(BUF_NUM) : 1;
     localparam int READY_CNT_W = $clog2(BUF_NUM + 1);
 
+    // 真正存数据的地方
     logic [PIXEL_W-1:0] mem_reg [0:BUF_NUM-1][0:MAX_DST_W-1];
 
-    logic [BUF_NUM-1:0] slot_occupied_reg;
-    logic [BUF_NUM-1:0] slot_ready_reg;
+    // 每一个槽位的状态
+    logic [BUF_NUM-1:0] slot_occupied_reg; // 槽位正被占用
+    logic [BUF_NUM-1:0] slot_ready_reg;    // 槽位已装满且等待写回
     logic [COUNT_W-1:0] slot_pixel_count_reg [0:BUF_NUM-1];
 
     logic                 fill_active_reg;
@@ -114,6 +117,7 @@ module row_out_buffer #(
             row_error <= 1'b0;
             out_done  <= 1'b0;
 
+            // 开始写入
             if (row_start) begin
                 if ((row_pixel_count == 0) || (row_pixel_count > MAX_DST_W) || fill_active_reg || !have_free_slot) begin
                     row_error <= 1'b1;
@@ -128,10 +132,12 @@ module row_out_buffer #(
                 end
             end
 
+            // 每一拍写入
             if (fill_active_reg && in_fire) begin
                 mem_reg[fill_sel_reg][wr_ptr_reg[ADDR_W-1:0]] <= in_data;
                 wr_ptr_reg <= wr_ptr_reg + 1'b1;
 
+                // 写满一行
                 if (fill_done_fire) begin
                     if (ready_count_reg == BUF_NUM) begin
                         row_error <= 1'b1;
@@ -145,6 +151,7 @@ module row_out_buffer #(
                 end
             end
 
+            // 开始读出至DDR
             if (out_start && !drain_active_reg) begin
                 if (ready_count_reg == 0) begin
                     row_error <= 1'b1;

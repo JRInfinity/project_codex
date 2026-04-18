@@ -20,7 +20,7 @@ module frame_config_cdc #(
     output logic              cfg_ready_src,
 
     input  logic              dst_clk,
-    output logic              cfg_valid_dst,
+    output logic              cfg_valid_dst, // core域的启动信号：cdc已完成（一个pulse）
     output logic [ADDR_W-1:0] src_base_addr_dst,
     output logic [ADDR_W-1:0] dst_base_addr_dst,
     output logic [ADDR_W-1:0] src_stride_dst,

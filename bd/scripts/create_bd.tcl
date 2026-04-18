@@ -140,8 +140,13 @@ connect_bd_net [get_bd_pins $clk_wiz_0/locked] [get_bd_pins $rst_core_0/dcm_lock
 connect_bd_net [get_bd_pins $clk_wiz_0/clk_out1] [get_bd_pins $rst_axi_0/slowest_sync_clk]
 connect_bd_net [get_bd_pins $clk_wiz_0/clk_out2] [get_bd_pins $rst_core_0/slowest_sync_clk]
 
-# External reset source can be changed if needed.
+# Match the hand-fixed BD:
+# - use PS FCLK_RESET0_N as the reset source
+# - invert it with util_vector_logic
+# - drive clk_wiz reset directly from the inverted reset
+# - keep proc_sys_reset ext_reset_in sourced from the same inverted reset
 connect_bd_net [get_bd_pins $ps_0/FCLK_RESET0_N] [get_bd_pins $reset_inv_0/Op1]
+connect_bd_net [get_bd_pins $reset_inv_0/Res] [get_bd_pins $clk_wiz_0/reset]
 connect_bd_net [get_bd_pins $reset_inv_0/Res] [get_bd_pins $rst_axi_0/ext_reset_in]
 connect_bd_net [get_bd_pins $reset_inv_0/Res] [get_bd_pins $rst_core_0/ext_reset_in]
 
