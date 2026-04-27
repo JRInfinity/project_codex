@@ -35,7 +35,7 @@ package ddr_axi_pkg;
         input longint unsigned addr_offset,
         input int unsigned      byte_w
     );
-        calc_total_words = (byte_count + addr_offset + byte_w - 1) / byte_w;
+        calc_total_words = (byte_count + addr_offset + byte_w - 1) / byte_w; // + byte_w - 1 是为了向上取整
     endfunction
 
     // 计算当前对齐地址到下一个 4KB 边界前还能放下多少个 word。

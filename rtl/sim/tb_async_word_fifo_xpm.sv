@@ -48,7 +48,7 @@ module tb_async_word_fifo_xpm;
         .ALMOST_FULL_MARGIN(ALMOST_FULL_MARGIN)
     ) dut (
         .wr_clk(wr_clk),
-        .sys_rst(sys_rst),
+        .wr_rst(sys_rst),
         .wr_en(wr_en),
         .wr_data(wr_data),
         .full(full),
@@ -56,6 +56,7 @@ module tb_async_word_fifo_xpm;
         .wr_count(wr_count),
         .overflow(overflow),
         .rd_clk(rd_clk),
+        .rd_rst(sys_rst),
         .rd_en(rd_en),
         .rd_data(rd_data),
         .empty(empty),

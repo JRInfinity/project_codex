@@ -34,9 +34,10 @@ module row_out_buffer #(
     localparam int ADDR_W      = (MAX_DST_W > 1) ? $clog2(MAX_DST_W) : 1;
     localparam int BUF_SEL_W   = (BUF_NUM > 1) ? $clog2(BUF_NUM) : 1;
     localparam int READY_CNT_W = $clog2(BUF_NUM + 1);
+    localparam int ROW_MEM_W   = MAX_DST_W * PIXEL_W;
 
     // 真正存数据的地方
-    logic [PIXEL_W-1:0] mem_reg [0:BUF_NUM-1][0:MAX_DST_W-1];
+    logic [ROW_MEM_W-1:0] mem_reg [0:BUF_NUM-1];
 
     // 每一个槽位的状态
     logic [BUF_NUM-1:0] slot_occupied_reg; // 槽位正被占用
@@ -65,6 +66,12 @@ module row_out_buffer #(
     logic                 fill_done_fire;
     logic                 drain_done_fire;
     logic [BUF_SEL_W-1:0] drain_sel_next;
+
+    function automatic int pixel_lsb(input logic [ADDR_W-1:0] pix_idx);
+        begin
+            pixel_lsb = int'(pix_idx) * PIXEL_W;
+        end
+    endfunction
 
     always_comb begin
         have_free_slot = 1'b0;
@@ -134,7 +141,7 @@ module row_out_buffer #(
 
             // 每一拍写入
             if (fill_active_reg && in_fire) begin
-                mem_reg[fill_sel_reg][wr_ptr_reg[ADDR_W-1:0]] <= in_data;
+                mem_reg[fill_sel_reg][pixel_lsb(wr_ptr_reg[ADDR_W-1:0]) +: PIXEL_W] <= in_data;
                 wr_ptr_reg <= wr_ptr_reg + 1'b1;
 
                 // 写满一行
@@ -160,7 +167,7 @@ module row_out_buffer #(
                     drain_sel_reg                  <= drain_sel_next;
                     drain_pixel_count_reg          <= slot_pixel_count_reg[drain_sel_next];
                     rd_ptr_reg                     <= '0;
-                    out_data_reg                   <= mem_reg[drain_sel_next][0];
+                    out_data_reg                   <= mem_reg[drain_sel_next][0 +: PIXEL_W];
                     out_valid_reg                  <= 1'b1;
                     slot_ready_reg[drain_sel_next] <= 1'b0;
 
@@ -181,7 +188,7 @@ module row_out_buffer #(
                     slot_pixel_count_reg[drain_sel_reg] <= '0;
                 end else begin
                     rd_ptr_reg    <= rd_ptr_reg + 1'b1;
-                    out_data_reg  <= mem_reg[drain_sel_reg][rd_ptr_reg[ADDR_W-1:0] + 1'b1];
+                    out_data_reg  <= mem_reg[drain_sel_reg][pixel_lsb(rd_ptr_reg[ADDR_W-1:0] + 1'b1) +: PIXEL_W];
                     out_valid_reg <= 1'b1;
                 end
             end

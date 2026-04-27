@@ -199,27 +199,19 @@ module axi_burst_writer #(
                 end
 
                 S_PREP_LIMIT: begin
-                    if (words_remaining_calc == 0) begin
-                        error_latched_reg <= 1'b1;
-                        state_reg   <= S_DONE;
-                    end else begin
-                        words_write_remaining_limited_reg <= limit_burst_words(words_write_remaining_reg);
-                        next_write_words_to_4kb_limited_reg <= limit_burst_words(next_write_words_to_4kb_reg);
-                        state_reg <= S_PREP;
-                    end
+                    // ddr_write_engine filters zero-byte tasks before this module;
+                    // keep the AW preparation path independent of the wide counter.
+                    words_write_remaining_limited_reg <= limit_burst_words(words_write_remaining_reg);
+                    next_write_words_to_4kb_limited_reg <= limit_burst_words(next_write_words_to_4kb_reg);
+                    state_reg <= S_PREP;
                 end
 
                 S_PREP: begin
-                    if (words_remaining_calc == 0) begin
-                        error_latched_reg <= 1'b1;
-                        state_reg   <= S_DONE;
-                    end else begin
-                        burst_words_reg      <= burst_words_calc;
-                        burst_sent_words_reg <= '0;
-                        aw_prep_addr_reg     <= current_burst_addr_calc;
-                        aw_prep_len_reg      <= burst_words_calc - 1'b1;
-                        state_reg            <= S_AWCFG;
-                    end
+                    burst_words_reg      <= burst_words_calc;
+                    burst_sent_words_reg <= '0;
+                    aw_prep_addr_reg     <= current_burst_addr_calc;
+                    aw_prep_len_reg      <= burst_words_calc - 1'b1;
+                    state_reg            <= S_AWCFG;
                 end
 
                 S_AWCFG: begin
@@ -310,5 +302,74 @@ module axi_burst_writer #(
             endcase
         end
     end
+`ifndef SYNTHESIS
+    logic [ADDR_W-1:0] awaddr_hold_assert_reg;
+    logic [7:0]        awlen_hold_assert_reg;
+    logic [2:0]        awsize_hold_assert_reg;
+    logic [1:0]        awburst_hold_assert_reg;
+    logic              aw_stall_assert_reg;
+    logic [DATA_W-1:0] wdata_hold_assert_reg;
+    logic [(DATA_W/8)-1:0] wstrb_hold_assert_reg;
+    logic              wlast_hold_assert_reg;
+    logic              w_stall_assert_reg;
+    int unsigned       aw_burst_bytes_assert;
+
+    always_ff @(posedge clk) begin
+        if (sys_rst) begin
+            awaddr_hold_assert_reg  <= '0;
+            awlen_hold_assert_reg   <= '0;
+            awsize_hold_assert_reg  <= '0;
+            awburst_hold_assert_reg <= '0;
+            aw_stall_assert_reg     <= 1'b0;
+            wdata_hold_assert_reg   <= '0;
+            wstrb_hold_assert_reg   <= '0;
+            wlast_hold_assert_reg   <= 1'b0;
+            w_stall_assert_reg      <= 1'b0;
+        end else begin
+            if (m_axi_wr.awvalid) begin
+                aw_burst_bytes_assert = (int'(m_axi_wr.awlen) + 1) * BYTE_W;
+                if (m_axi_wr.awlen > 8'd255) begin
+                    $error("axi_burst_writer AWLEN exceeded AXI4 limit");
+                end
+                if ((m_axi_wr.awaddr[11:0] + aw_burst_bytes_assert) > 4096) begin
+                    $error("axi_burst_writer issued burst crossing 4KB boundary");
+                end
+            end
+
+            if (m_axi_wr.awvalid && !m_axi_wr.awready) begin
+                if (aw_stall_assert_reg &&
+                    ((m_axi_wr.awaddr != awaddr_hold_assert_reg) ||
+                     (m_axi_wr.awlen != awlen_hold_assert_reg) ||
+                     (m_axi_wr.awsize != awsize_hold_assert_reg) ||
+                     (m_axi_wr.awburst != awburst_hold_assert_reg))) begin
+                    $error("axi_burst_writer AW channel changed while AWVALID waited for AWREADY");
+                end
+                awaddr_hold_assert_reg  <= m_axi_wr.awaddr;
+                awlen_hold_assert_reg   <= m_axi_wr.awlen;
+                awsize_hold_assert_reg  <= m_axi_wr.awsize;
+                awburst_hold_assert_reg <= m_axi_wr.awburst;
+                aw_stall_assert_reg     <= 1'b1;
+            end else begin
+                aw_stall_assert_reg <= 1'b0;
+            end
+
+            if (m_axi_wr.wvalid && !m_axi_wr.wready) begin
+                if (w_stall_assert_reg &&
+                    ((m_axi_wr.wdata != wdata_hold_assert_reg) ||
+                     (m_axi_wr.wstrb != wstrb_hold_assert_reg) ||
+                     (m_axi_wr.wlast != wlast_hold_assert_reg))) begin
+                    $error("axi_burst_writer W channel changed while WVALID waited for WREADY");
+                end
+                wdata_hold_assert_reg <= m_axi_wr.wdata;
+                wstrb_hold_assert_reg <= m_axi_wr.wstrb;
+                wlast_hold_assert_reg <= m_axi_wr.wlast;
+                w_stall_assert_reg    <= 1'b1;
+            end else begin
+                w_stall_assert_reg <= 1'b0;
+            end
+
+        end
+    end
+`endif
 
 endmodule

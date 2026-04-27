@@ -1,0 +1,70 @@
+`timescale 1ns/1ps
+
+module task_cdc #(
+    parameter int ADDR_W = 32
+) (
+    input  logic              src_clk,
+    input  logic              src_rst,
+    input  logic              task_valid_src,
+    input  logic [ADDR_W-1:0] task_addr_src,
+    input  logic [31:0]       task_byte_count_src,
+    output logic              task_ready_src,
+
+    input  logic              dst_clk,
+    input  logic              dst_rst,
+    output logic              task_valid_dst,
+    output logic [ADDR_W-1:0] task_addr_dst,
+    output logic [31:0]       task_byte_count_dst,
+    input  logic              task_ready_dst
+);
+
+    localparam int PAYLOAD_W = ADDR_W + 32;
+
+    logic [PAYLOAD_W-1:0] fifo_wr_data;
+    logic [PAYLOAD_W-1:0] fifo_rd_data;
+    logic fifo_full;
+    logic fifo_empty;
+    logic fifo_almost_full;
+    logic fifo_overflow;
+    logic fifo_underflow;
+    logic [3:0] fifo_wr_count;
+    logic [3:0] fifo_rd_count;
+
+    assign fifo_wr_data = {task_byte_count_src, task_addr_src};
+    assign task_ready_src = !fifo_full && (fifo_wr_count == '0);
+    assign task_valid_dst = !fifo_empty;
+    assign task_addr_dst = fifo_rd_data[ADDR_W-1:0];
+    assign task_byte_count_dst = fifo_rd_data[ADDR_W +: 32];
+
+    async_word_fifo #(
+        .DATA_W(PAYLOAD_W),
+        .DEPTH(16),
+        .ALMOST_FULL_MARGIN(2)
+    ) u_task_fifo (
+        .wr_clk(src_clk),
+        .wr_rst(src_rst),
+        .wr_en(task_valid_src && task_ready_src),
+        .wr_data(fifo_wr_data),
+        .full(fifo_full),
+        .almost_full(fifo_almost_full),
+        .wr_count(fifo_wr_count),
+        .overflow(fifo_overflow),
+
+        .rd_clk(dst_clk),
+        .rd_rst(dst_rst),
+        .rd_en(task_valid_dst && task_ready_dst),
+        .rd_data(fifo_rd_data),
+        .empty(fifo_empty),
+        .rd_count(fifo_rd_count),
+        .underflow(fifo_underflow)
+    );
+
+`ifndef SYNTHESIS
+    always_ff @(posedge src_clk) begin
+        if (!src_rst && task_valid_src && !task_ready_src) begin
+            $error("task_cdc overflow: task_valid_src asserted while FIFO full");
+        end
+    end
+`endif
+
+endmodule

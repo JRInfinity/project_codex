@@ -26,12 +26,16 @@ module tb_ddr_read_engine;
 
     logic               task_start;
     logic [ADDR_W-1:0]  task_addr;
+    logic [31:0]        task_row_stride;
     logic [31:0]        task_byte_count;
+    logic [15:0]        task_row_count;
+    logic               task_start_ready;
     logic               task_busy;
     logic               task_done;
     logic               task_error;
     logic [PIXEL_W-1:0] out_data;
     logic               out_valid;
+    logic               out_row_last;
     logic               out_ready;
 
     taxi_axi_if #(
@@ -52,15 +56,20 @@ module tb_ddr_read_engine;
     ) dut (
         .axi_clk(axi_clk),
         .core_clk(core_clk),
-        .sys_rst(sys_rst),
+        .axi_rst(sys_rst),
+        .core_rst(sys_rst),
         .task_start(task_start),
         .task_addr(task_addr),
+        .task_row_stride(task_row_stride),
         .task_byte_count(task_byte_count),
+        .task_row_count(task_row_count),
+        .task_start_ready(task_start_ready),
         .task_busy(task_busy),
         .task_done(task_done),
         .task_error(task_error),
         .out_data(out_data),
         .out_valid(out_valid),
+        .out_row_last(out_row_last),
         .out_ready(out_ready),
         .m_axi_rd(m_axi_rd)
     );
@@ -230,7 +239,9 @@ module tb_ddr_read_engine;
             sys_rst                  = 1'b1;
             task_start               = 1'b0;
             task_addr                = '0;
+            task_row_stride          = '0;
             task_byte_count          = '0;
+            task_row_count           = 16'd1;
             enable_backpressure      = 1'b0;
             inject_rresp_error       = 1'b0;
             inject_rlast_error       = 1'b0;
@@ -247,9 +258,11 @@ module tb_ddr_read_engine;
     task automatic start_read(input logic [ADDR_W-1:0] addr, input logic [31:0] byte_count);
         begin
             @(posedge core_clk);
-            task_addr       <= addr;
-            task_byte_count <= byte_count;
-            task_start      <= 1'b1;
+            task_addr        <= addr;
+            task_row_stride  <= byte_count;
+            task_byte_count  <= byte_count;
+            task_row_count   <= 16'd1;
+            task_start       <= 1'b1;
             @(posedge core_clk);
             task_start      <= 1'b0;
         end

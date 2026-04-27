@@ -1,0 +1,4 @@
+workload_id,rtl_top,tile_w,tile_h,set_num,way_num,merge_max_x,fifo_depth,lead_pixels,runtime_lead_pixels,runtime_merge_max_x_eff,runtime_merge_min_x,runtime_fifo_depth_eff,runtime_fifo_age_limit,runtime_prefetch_throttle_cycles,runtime_scheduler_policy,enable_row_bucket_merge,row_bucket_min_x,score
+cal128_r45_rb2,tb_image_geo_top_perf_single_cal128_rotate45_on,8,8,32,2,4,16,16,16,4,1,16,0,0,0,1,2,0
+cal256_r45_rb2,tb_image_geo_top_perf_single_cal256_rotate45_on,8,8,32,2,4,16,16,16,4,1,16,0,0,0,1,2,1
+proxy512_r45_rb2,tb_image_geo_top_perf_single_proxy512_rotate45_on,8,8,32,2,4,16,16,16,4,1,16,0,0,0,1,2,2

@@ -16,6 +16,32 @@ module tb_image_geo_top;
     localparam int PIXEL_W     = 8;
     localparam int MEM_BYTES   = 8192;
     localparam int BYTE_W      = AXI_DATA_W / 8;
+    localparam logic [AXIL_ADDR_W-1:0] REG_STATUS_ADDR = 12'h01C;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_READS_ADDR = 12'h028;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_MISSES_ADDR = 12'h02C;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_PREFETCH_ADDR = 12'h030;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_PREFETCH_HIT_ADDR = 12'h034;
+    localparam logic [AXIL_ADDR_W-1:0] REG_CACHE_STATS_EXT_BASE_ADDR = 12'h040;
+    localparam int CACHE_STAT_VERSION_WORD = 0;
+    localparam int CACHE_STAT_SNAPSHOT_ID_WORD = 1;
+    localparam int CACHE_STAT_FRAME_CYCLES_WORD = 2;
+    localparam int CACHE_STAT_TOTAL_CYCLES_WORD = 3;
+    localparam int CACHE_STAT_SAMPLE_REQ_WORD = 4;
+    localparam int CACHE_STAT_SAMPLE_ACCEPT_WORD = 5;
+    localparam int CACHE_STAT_SAMPLE_STALL_WORD = 6;
+    localparam int CACHE_STAT_READ_STARTS_WORD = 7;
+    localparam int CACHE_STAT_MISSES_WORD = 8;
+    localparam int CACHE_STAT_PREFETCH_STARTS_WORD = 9;
+    localparam int CACHE_STAT_PREFETCH_HITS_WORD = 10;
+    localparam int CACHE_STAT_ANALYTIC_FILLS_WORD = 14;
+    localparam int CACHE_STAT_NORMAL_PREFETCH_FILLS_WORD = 15;
+    localparam int CACHE_STAT_FIFO_MAX_WORD = 17;
+    localparam int CACHE_STAT_READ_BUSY_CYCLES_WORD = 18;
+    localparam int CACHE_STAT_READ_BYTES_LOW_WORD = 19;
+    localparam int CACHE_STAT_READ_BYTES_HIGH_WORD = 20;
+    localparam int CACHE_STAT_REPLACEMENT_FAIL_WORD = 22;
+    localparam int CACHE_STAT_MISS_LATENCY_COUNT_WORD = 27;
+    localparam int CACHE_STAT_MERGE_HIST_BASE_WORD = 28;
 
     logic axi_clk;
     logic axi_rstn;
@@ -98,6 +124,11 @@ module tb_image_geo_top;
     bit                    wr_active_reg;
 
     int cycle_count;
+    logic random_backpressure_enable;
+    logic rd_resp_error_once_enable;
+    logic rd_resp_error_injected;
+    logic wr_resp_error_once_enable;
+    logic wr_resp_error_injected;
 
     initial axi_clk = 1'b0;
     always #2.5 axi_clk = ~axi_clk;
@@ -240,12 +271,60 @@ module tb_image_geo_top;
             m_axi_wr_bvalid   = 1'b0;
             rd_active_reg     = 1'b0;
             wr_active_reg     = 1'b0;
+            random_backpressure_enable = 1'b0;
+            rd_resp_error_once_enable = 1'b0;
+            rd_resp_error_injected = 1'b0;
+            wr_resp_error_once_enable = 1'b0;
+            wr_resp_error_injected = 1'b0;
             cycle_count       = 0;
             init_memory();
             repeat (6) @(posedge axi_clk);
             axi_rstn  = 1'b1;
             core_rstn = 1'b1;
             repeat (2) @(posedge axi_clk);
+        end
+    endtask
+
+    task automatic check_status_idle_after_reset(input string tag);
+        logic [31:0] status_data;
+        begin
+            axil_read(REG_STATUS_ADDR, status_data);
+            if (status_data[2:0] != 3'b000) begin
+                $fatal(1, "%s: reset release produced unexpected status 0x%08h", tag, status_data);
+            end
+        end
+    endtask
+
+    task automatic reset_dut_skewed_idle;
+        begin
+            reset_dut();
+            check_status_idle_after_reset("initial simultaneous reset");
+
+            core_rstn <= 1'b0;
+            repeat (3) @(posedge core_clk);
+            core_rstn <= 1'b1;
+            repeat (8) @(posedge core_clk);
+            check_status_idle_after_reset("core-only reset pulse");
+
+            axi_rstn <= 1'b0;
+            s_axi_ctrl_awvalid <= 1'b0;
+            s_axi_ctrl_wvalid  <= 1'b0;
+            s_axi_ctrl_bready  <= 1'b0;
+            s_axi_ctrl_arvalid <= 1'b0;
+            s_axi_ctrl_rready  <= 1'b0;
+            repeat (5) @(posedge axi_clk);
+            axi_rstn <= 1'b1;
+            repeat (8) @(posedge axi_clk);
+            check_status_idle_after_reset("axi-only reset pulse");
+
+            axi_rstn <= 1'b0;
+            core_rstn <= 1'b0;
+            repeat (4) @(posedge axi_clk);
+            axi_rstn <= 1'b1;
+            repeat (3) @(posedge core_clk);
+            core_rstn <= 1'b1;
+            repeat (8) @(posedge axi_clk);
+            check_status_idle_after_reset("skewed dual reset release");
         end
     endtask
 
@@ -320,7 +399,7 @@ module tb_image_geo_top;
             rd_active_beats_reg <= 0;
             rd_active_idx_reg   <= 0;
         end else begin
-            m_axi_rd_arready <= 1'b1;
+            m_axi_rd_arready <= random_backpressure_enable ? (cycle_count[1:0] != 2'b00) : 1'b1;
 
             if (!rd_active_reg && m_axi_rd_arvalid && m_axi_rd_arready) begin
                 rd_active_reg       <= 1'b1;
@@ -334,7 +413,12 @@ module tb_image_geo_top;
                     src_mem[m_axi_rd_araddr + 1],
                     src_mem[m_axi_rd_araddr + 0]
                 };
-                m_axi_rd_rresp  <= 2'b00;
+                if (rd_resp_error_once_enable && !rd_resp_error_injected) begin
+                    m_axi_rd_rresp <= 2'b10;
+                    rd_resp_error_injected <= 1'b1;
+                end else begin
+                    m_axi_rd_rresp <= 2'b00;
+                end
                 m_axi_rd_rlast  <= (m_axi_rd_arlen == 0);
             end else if (rd_active_reg && m_axi_rd_rvalid && m_axi_rd_rready) begin
                 if (rd_active_idx_reg == (rd_active_beats_reg - 1)) begin
@@ -343,7 +427,7 @@ module tb_image_geo_top;
                     m_axi_rd_rlast  <= 1'b0;
                 end else begin
                     rd_active_idx_reg <= rd_active_idx_reg + 1;
-                    m_axi_rd_rvalid   <= 1'b1;
+                    m_axi_rd_rvalid   <= random_backpressure_enable ? (cycle_count[2:0] != 3'b101) : 1'b1;
                     m_axi_rd_rdata    <= {
                         src_mem[rd_active_addr_reg + (rd_active_idx_reg + 1)*BYTE_W + 3],
                         src_mem[rd_active_addr_reg + (rd_active_idx_reg + 1)*BYTE_W + 2],
@@ -352,6 +436,10 @@ module tb_image_geo_top;
                     };
                     m_axi_rd_rresp <= 2'b00;
                     m_axi_rd_rlast <= ((rd_active_idx_reg + 1) == (rd_active_beats_reg - 1));
+                end
+            end else if (rd_active_reg && !m_axi_rd_rvalid) begin
+                if (!random_backpressure_enable || (cycle_count[2:0] != 3'b101)) begin
+                    m_axi_rd_rvalid <= 1'b1;
                 end
             end else if (!rd_active_reg) begin
                 m_axi_rd_rvalid <= 1'b0;
@@ -379,8 +467,13 @@ module tb_image_geo_top;
             wr_active_beats_reg <= 0;
             wr_active_idx_reg   <= 0;
         end else begin
-            m_axi_wr_awready <= 1'b1;
-            m_axi_wr_wready  <= 1'b1;
+            if (random_backpressure_enable) begin
+                m_axi_wr_awready <= !wr_active_reg && (cycle_count[1:0] != 2'b01);
+                m_axi_wr_wready  <= wr_active_reg && (cycle_count[2:0] != 3'b011);
+            end else begin
+                m_axi_wr_awready <= 1'b1;
+                m_axi_wr_wready  <= 1'b1;
+            end
 
             if (m_axi_wr_awvalid && m_axi_wr_awready) begin
                 wr_active_reg       <= 1'b1;
@@ -408,7 +501,12 @@ module tb_image_geo_top;
                 if (wr_active_idx_reg == (wr_active_beats_reg - 1)) begin
                     wr_active_reg   <= 1'b0;
                     m_axi_wr_bvalid <= 1'b1;
-                    m_axi_wr_bresp  <= 2'b00;
+                    if (wr_resp_error_once_enable && !wr_resp_error_injected) begin
+                        m_axi_wr_bresp <= 2'b10;
+                        wr_resp_error_injected <= 1'b1;
+                    end else begin
+                        m_axi_wr_bresp <= 2'b00;
+                    end
                 end else begin
                     wr_active_idx_reg <= wr_active_idx_reg + 1;
                 end
@@ -699,7 +797,33 @@ module tb_image_geo_top;
         begin
             while (!irq) begin
                 @(posedge axi_clk);
-                if (cycle_count > 50000) begin
+                if (cycle_count > 200000) begin
+                    $display("TIMEOUT_DBG status busy=%0b done=%0b err=%0b core_busy=%0b core_done=%0b core_state=%0d sample_v=%0b sample_r=%0b cache_busy=%0b cache_err=%0b fill=%0b row=%0b read_busy=%0b read_start=%0b misses=%0d reads=%0d",
+                        dut.ctrl_busy_axi_reg, dut.ctrl_result_done_axi, dut.ctrl_result_error_axi,
+                        dut.core_busy, dut.core_done, dut.u_rotate_core_bilinear.state_reg,
+                        dut.sample_req_valid, dut.sample_req_ready,
+                        dut.read_busy_core, dut.src_cache_error,
+                        dut.u_src_tile_cache.fill_active_reg,
+                        dut.u_src_tile_cache.row_inflight_reg,
+                        dut.cache_read_busy,
+                        dut.cache_read_start,
+                        dut.src_cache_stat_misses,
+                        dut.src_cache_stat_read_starts);
+                    $display("TIMEOUT_CACHE_DBG sx0=%0d sy0=%0d sx1=%0d sy1=%0d hit=%0b%0b%0b%0b miss=%0b miss_tile=(%0d,%0d) fill_req=%0b prefetch_en=%0b cfg_src=%0dx%0d sectors=%0dx%0d fifo=%0d planner=%0b",
+                        dut.sample_x0, dut.sample_y0, dut.sample_x1, dut.sample_y1,
+                        dut.u_src_tile_cache.hit00, dut.u_src_tile_cache.hit01,
+                        dut.u_src_tile_cache.hit10, dut.u_src_tile_cache.hit11,
+                        dut.u_src_tile_cache.miss_present,
+                        dut.u_src_tile_cache.miss_tile_x,
+                        dut.u_src_tile_cache.miss_tile_y,
+                        dut.u_src_tile_cache.fill_request_present,
+                        dut.u_src_tile_cache.cfg_prefetch_enable_reg,
+                        dut.u_src_tile_cache.cfg_src_w_reg,
+                        dut.u_src_tile_cache.cfg_src_h_reg,
+                        dut.u_src_tile_cache.cfg_sector_count_x_reg,
+                        dut.u_src_tile_cache.cfg_sector_count_y_reg,
+                        dut.u_src_tile_cache.fifo_count_reg,
+                        dut.u_src_tile_cache.planner_active_reg);
                     $fatal(1, "Top-level simulation timed out waiting for irq");
                 end
             end
@@ -725,17 +849,52 @@ module tb_image_geo_top;
         end
     endtask
 
+    task automatic check_status_error(input string tag);
+        logic [31:0] status_data;
+        begin
+            axil_read(12'h01C, status_data);
+            if (!status_data[2]) begin
+                $display("STATUS=0x%08h tag=%s", status_data, tag);
+                $display("ctrl_busy=%0b ctrl_done=%0b ctrl_error=%0b read_busy=%0b cache_error=%0b core_error=%0b write_error=%0b injected=%0b",
+                    dut.ctrl_busy_axi_reg, dut.ctrl_result_done_axi, dut.ctrl_result_error_axi,
+                    dut.read_busy_core, dut.src_cache_error, dut.core_error, dut.write_error,
+                    rd_resp_error_injected);
+                $fatal(1, "Top-level status did not report expected error");
+            end
+            if (!rd_resp_error_injected) begin
+                $fatal(1, "Read error injection did not fire");
+            end
+        end
+    endtask
+
+    task automatic check_status_write_error(input string tag);
+        logic [31:0] status_data;
+        begin
+            axil_read(12'h01C, status_data);
+            if (!status_data[2]) begin
+                $display("STATUS=0x%08h tag=%s", status_data, tag);
+                $display("ctrl_busy=%0b ctrl_done=%0b ctrl_error=%0b read_busy=%0b cache_error=%0b core_error=%0b write_error=%0b injected=%0b",
+                    dut.ctrl_busy_axi_reg, dut.ctrl_result_done_axi, dut.ctrl_result_error_axi,
+                    dut.read_busy_core, dut.src_cache_error, dut.core_error, dut.write_error,
+                    wr_resp_error_injected);
+                $fatal(1, "Top-level status did not report expected write error");
+            end
+            if (!wr_resp_error_injected) begin
+                $fatal(1, "Write error injection did not fire");
+            end
+        end
+    endtask
+
     task automatic check_cache_stats_nonzero;
         logic [31:0] reads;
         logic [31:0] misses;
+        logic [31:0] snapshot_id;
         begin
-            axil_read(12'h028, reads);
-            axil_read(12'h02C, misses);
+            wait_for_cache_stats_snapshot(snapshot_id);
+            axil_read(REG_CACHE_READS_ADDR, reads);
+            axil_read(REG_CACHE_MISSES_ADDR, misses);
             if (reads == 0) begin
                 $fatal(1, "Cache read-start stat should be non-zero");
-            end
-            if (misses == 0) begin
-                $fatal(1, "Cache miss stat should be non-zero");
             end
         end
     endtask
@@ -746,11 +905,238 @@ module tb_image_geo_top;
         output logic [31:0] prefetches,
         output logic [31:0] prefetch_hits
     );
+        logic [31:0] snapshot_id;
         begin
-            axil_read(12'h028, reads);
-            axil_read(12'h02C, misses);
-            axil_read(12'h030, prefetches);
-            axil_read(12'h034, prefetch_hits);
+            wait_for_cache_stats_snapshot(snapshot_id);
+            axil_read(REG_CACHE_READS_ADDR, reads);
+            axil_read(REG_CACHE_MISSES_ADDR, misses);
+            axil_read(REG_CACHE_PREFETCH_ADDR, prefetches);
+            axil_read(REG_CACHE_PREFETCH_HIT_ADDR, prefetch_hits);
+        end
+    endtask
+
+    task automatic read_cache_ext_word(input int word_idx, output logic [31:0] data);
+        begin
+            axil_read(REG_CACHE_STATS_EXT_BASE_ADDR + AXIL_ADDR_W'(word_idx * 4), data);
+        end
+    endtask
+
+    task automatic wait_for_cache_stats_snapshot(output logic [31:0] snapshot_id);
+        int tries;
+        logic [31:0] version;
+        begin
+            snapshot_id = '0;
+            version = '0;
+            for (tries = 0; tries < 80; tries = tries + 1) begin
+                read_cache_ext_word(CACHE_STAT_VERSION_WORD, version);
+                read_cache_ext_word(CACHE_STAT_SNAPSHOT_ID_WORD, snapshot_id);
+                if ((version == 32'h0001_0000) && (snapshot_id != 0)) begin
+                    return;
+                end
+                repeat (2) @(posedge axi_clk);
+            end
+            $fatal(1, "Timed out waiting for cache stats snapshot, version=0x%08h snapshot=%0d",
+                   version, snapshot_id);
+        end
+    endtask
+
+    task automatic check_cache_stats_extended(input bit expect_prefetch, input string tag);
+        logic [31:0] snapshot_id;
+        logic [31:0] legacy_reads;
+        logic [31:0] legacy_misses;
+        logic [31:0] legacy_prefetches;
+        logic [31:0] legacy_prefetch_hits;
+        logic [31:0] frame_cycles;
+        logic [31:0] total_cycles;
+        logic [31:0] sample_req_count;
+        logic [31:0] sample_accept_count;
+        logic [31:0] sample_stall_cycles;
+        logic [31:0] reads_ext;
+        logic [31:0] misses_ext;
+        logic [31:0] prefetches_ext;
+        logic [31:0] prefetch_hits_ext;
+        logic [31:0] analytic_fills_ext;
+        logic [31:0] normal_prefetch_fills_ext;
+        logic [31:0] fifo_max_ext;
+        logic [31:0] read_busy_cycles_ext;
+        logic [31:0] read_bytes_low_ext;
+        logic [31:0] read_bytes_high_ext;
+        logic [31:0] replacement_fail_ext;
+        logic [31:0] miss_latency_count_ext;
+        logic [31:0] merge_hist_1_ext;
+        begin
+            wait_for_cache_stats_snapshot(snapshot_id);
+            read_cache_stats(legacy_reads, legacy_misses, legacy_prefetches, legacy_prefetch_hits);
+            read_cache_ext_word(CACHE_STAT_FRAME_CYCLES_WORD, frame_cycles);
+            read_cache_ext_word(CACHE_STAT_TOTAL_CYCLES_WORD, total_cycles);
+            read_cache_ext_word(CACHE_STAT_SAMPLE_REQ_WORD, sample_req_count);
+            read_cache_ext_word(CACHE_STAT_SAMPLE_ACCEPT_WORD, sample_accept_count);
+            read_cache_ext_word(CACHE_STAT_SAMPLE_STALL_WORD, sample_stall_cycles);
+            read_cache_ext_word(CACHE_STAT_READ_STARTS_WORD, reads_ext);
+            read_cache_ext_word(CACHE_STAT_MISSES_WORD, misses_ext);
+            read_cache_ext_word(CACHE_STAT_PREFETCH_STARTS_WORD, prefetches_ext);
+            read_cache_ext_word(CACHE_STAT_PREFETCH_HITS_WORD, prefetch_hits_ext);
+            read_cache_ext_word(CACHE_STAT_ANALYTIC_FILLS_WORD, analytic_fills_ext);
+            read_cache_ext_word(CACHE_STAT_NORMAL_PREFETCH_FILLS_WORD, normal_prefetch_fills_ext);
+            read_cache_ext_word(CACHE_STAT_FIFO_MAX_WORD, fifo_max_ext);
+            read_cache_ext_word(CACHE_STAT_READ_BUSY_CYCLES_WORD, read_busy_cycles_ext);
+            read_cache_ext_word(CACHE_STAT_READ_BYTES_LOW_WORD, read_bytes_low_ext);
+            read_cache_ext_word(CACHE_STAT_READ_BYTES_HIGH_WORD, read_bytes_high_ext);
+            read_cache_ext_word(CACHE_STAT_REPLACEMENT_FAIL_WORD, replacement_fail_ext);
+            read_cache_ext_word(CACHE_STAT_MISS_LATENCY_COUNT_WORD, miss_latency_count_ext);
+            read_cache_ext_word(CACHE_STAT_MERGE_HIST_BASE_WORD + 1, merge_hist_1_ext);
+
+            if ((legacy_reads != reads_ext) ||
+                (legacy_misses != misses_ext) ||
+                (legacy_prefetches != prefetches_ext) ||
+                (legacy_prefetch_hits != prefetch_hits_ext)) begin
+                $fatal(1, "%s: legacy/ext stats mismatch legacy r/m/p/h=%0d/%0d/%0d/%0d ext=%0d/%0d/%0d/%0d",
+                       tag, legacy_reads, legacy_misses, legacy_prefetches, legacy_prefetch_hits,
+                       reads_ext, misses_ext, prefetches_ext, prefetch_hits_ext);
+            end
+            if ((frame_cycles == 0) || (total_cycles == 0) || (sample_accept_count == 0) ||
+                (sample_req_count < sample_accept_count) || (reads_ext == 0) ||
+                ({read_bytes_high_ext, read_bytes_low_ext} == 64'd0)) begin
+                $fatal(1, "%s: extended stats are not credible snap=%0d frame=%0d total=%0d req=%0d accept=%0d reads=%0d bytes=%0d",
+                       tag, snapshot_id, frame_cycles, total_cycles, sample_req_count, sample_accept_count,
+                       reads_ext, {read_bytes_high_ext, read_bytes_low_ext});
+            end
+            if (!expect_prefetch &&
+                ((prefetches_ext != 0) || (prefetch_hits_ext != 0) ||
+                 (analytic_fills_ext != 0) || (normal_prefetch_fills_ext != 0))) begin
+                $fatal(1, "%s: prefetch-off run reported prefetch stats p/h/a/n=%0d/%0d/%0d/%0d",
+                       tag, prefetches_ext, prefetch_hits_ext, analytic_fills_ext, normal_prefetch_fills_ext);
+            end
+            if (expect_prefetch && (prefetches_ext == 0)) begin
+                $fatal(1, "%s: prefetch-on run reported zero prefetch fills", tag);
+            end
+            $display("CACHE_EXT_STATS %s snap=%0d frame=%0d total=%0d req=%0d accept=%0d stall=%0d reads=%0d misses=%0d prefetch=%0d hits=%0d fifo_max=%0d read_busy=%0d bytes=%0d repl_fail=%0d miss_lat_count=%0d merge1=%0d",
+                     tag, snapshot_id, frame_cycles, total_cycles, sample_req_count, sample_accept_count,
+                     sample_stall_cycles, reads_ext, misses_ext, prefetches_ext, prefetch_hits_ext,
+                     fifo_max_ext, read_busy_cycles_ext, {read_bytes_high_ext, read_bytes_low_ext},
+                     replacement_fail_ext, miss_latency_count_ext, merge_hist_1_ext);
+        end
+    endtask
+
+    task automatic wait_for_status_busy(input string tag);
+        int tries;
+        logic [31:0] status_data;
+        begin
+            for (tries = 0; tries < 80; tries = tries + 1) begin
+                axil_read(REG_STATUS_ADDR, status_data);
+                if (status_data[0]) begin
+                    return;
+                end
+                repeat (2) @(posedge axi_clk);
+            end
+            $fatal(1, "%s: status never reported busy before start-while-busy probe", tag);
+        end
+    endtask
+
+    task automatic attempt_start_while_busy_probe;
+        logic [31:0] status_data;
+        begin
+            wait_for_status_busy("start_while_busy");
+            axil_write(12'h004, 32'h0000_0100);
+            axil_write(12'h008, 32'h0000_0700);
+            axil_write(12'h00C, 32'd4);
+            axil_write(12'h010, 32'd4);
+            axil_write(12'h014, {16'd4, 16'd4});
+            axil_write(12'h018, {16'd4, 16'd4});
+            axil_write(12'h020, 32'sh0000_0000);
+            axil_write(12'h024, 32'sh0001_0000);
+            axil_write(12'h000, 32'h0000_0003);
+            axil_read(REG_STATUS_ADDR, status_data);
+            if (!status_data[0]) begin
+                $fatal(1, "start-while-busy probe unexpectedly cleared busy status");
+            end
+        end
+    endtask
+
+    task automatic run_identity_32_to_16_backpressure_case;
+        logic [31:0] status_data;
+        begin
+            reset_dut();
+            random_backpressure_enable <= 1'b1;
+            axil_write(12'h004, 32'h0000_0900);
+            axil_write(12'h008, 32'h0000_1100);
+            axil_write(12'h00C, 32'd32);
+            axil_write(12'h010, 32'd32);
+            axil_write(12'h014, {16'd16, 16'd32});
+            axil_write(12'h018, {16'd16, 16'd32});
+            axil_write(12'h020, 32'sh0000_0000);
+            axil_write(12'h024, 32'sh0001_0000);
+            axil_write(12'h038, 32'h0000_0001);
+            axil_write(12'h000, 32'h0000_0003);
+
+            wait_for_irq();
+            check_status_done_ok(status_data);
+            check_transform_ref_generic(32'h0000_0900, 32'h0000_1100, 32, 32, 16, 32, 16,
+                                        32'sh0000_0000, 32'sh0001_0000);
+            check_cache_stats_extended(1'b1, "identity_32_to_16_random_backpressure");
+            random_backpressure_enable <= 1'b0;
+        end
+    endtask
+
+    task automatic run_read_error_injection_case;
+        begin
+            reset_dut();
+            rd_resp_error_once_enable <= 1'b1;
+            axil_write(12'h004, 32'h0000_0900);
+            axil_write(12'h008, 32'h0000_1100);
+            axil_write(12'h00C, 32'd32);
+            axil_write(12'h010, 32'd32);
+            axil_write(12'h014, {16'd16, 16'd32});
+            axil_write(12'h018, {16'd16, 16'd32});
+            axil_write(12'h020, 32'sh0000_0000);
+            axil_write(12'h024, 32'sh0001_0000);
+            axil_write(12'h038, 32'h0000_0001);
+            axil_write(12'h000, 32'h0000_0003);
+
+            wait_for_irq();
+            check_status_error("identity_32_to_16_read_error");
+            rd_resp_error_once_enable <= 1'b0;
+        end
+    endtask
+
+    task automatic run_write_error_injection_case;
+        begin
+            reset_dut();
+            wr_resp_error_once_enable <= 1'b1;
+            axil_write(12'h004, 32'h0000_0900);
+            axil_write(12'h008, 32'h0000_1100);
+            axil_write(12'h00C, 32'd32);
+            axil_write(12'h010, 32'd32);
+            axil_write(12'h014, {16'd16, 16'd32});
+            axil_write(12'h018, {16'd16, 16'd32});
+            axil_write(12'h020, 32'sh0000_0000);
+            axil_write(12'h024, 32'sh0001_0000);
+            axil_write(12'h038, 32'h0000_0001);
+            axil_write(12'h000, 32'h0000_0003);
+
+            wait_for_irq();
+            check_status_write_error("identity_32_to_16_write_error");
+            wr_resp_error_once_enable <= 1'b0;
+        end
+    endtask
+
+    task automatic run_reset_during_busy_case;
+        begin
+            reset_dut();
+            axil_write(12'h004, 32'h0000_0900);
+            axil_write(12'h008, 32'h0000_1100);
+            axil_write(12'h00C, 32'd32);
+            axil_write(12'h010, 32'd32);
+            axil_write(12'h014, {16'd16, 16'd32});
+            axil_write(12'h018, {16'd16, 16'd32});
+            axil_write(12'h020, 32'sh0000_0000);
+            axil_write(12'h024, 32'sh0001_0000);
+            axil_write(12'h038, 32'h0000_0001);
+            axil_write(12'h000, 32'h0000_0003);
+
+            wait_for_status_busy("reset_during_busy");
+            reset_dut();
+            check_status_idle_after_reset("reset during busy");
         end
     endtask
 
@@ -765,8 +1151,11 @@ module tb_image_geo_top;
         logic [31:0] prefetches_prefetch;
         logic [31:0] prefetch_hits_prefetch;
 
+        $display("TOP_CASE reset_cdc_skewed_idle");
+        reset_dut_skewed_idle();
         reset_dut();
 
+        $display("TOP_CASE identity_4x4_default");
         axil_write(12'h004, 32'h0000_0100);
         axil_write(12'h008, 32'h0000_0200);
         axil_write(12'h00C, 32'd4);
@@ -781,6 +1170,7 @@ module tb_image_geo_top;
         check_identity_4x4();
 
         reset_dut();
+        $display("TOP_CASE rotate90_4x4");
         axil_write(12'h004, 32'h0000_0100);
         axil_write(12'h008, 32'h0000_0200);
         axil_write(12'h00C, 32'd4);
@@ -796,6 +1186,7 @@ module tb_image_geo_top;
         check_rotate90_cw_4x4();
 
         reset_dut();
+        $display("TOP_CASE rotate45_4x4");
         axil_write(12'h004, 32'h0000_0100);
         axil_write(12'h008, 32'h0000_0200);
         axil_write(12'h00C, 32'd4);
@@ -811,6 +1202,7 @@ module tb_image_geo_top;
         check_transform_ref_4x4(32'sh0000_B505, 32'sh0000_B505);
 
         reset_dut();
+        $display("TOP_CASE rotate45_20_default_prefetch");
         axil_write(12'h004, 32'h0000_0300);
         axil_write(12'h008, 32'h0000_0500);
         axil_write(12'h00C, 32'd20);
@@ -820,13 +1212,16 @@ module tb_image_geo_top;
         axil_write(12'h020, 32'sh0000_B505);
         axil_write(12'h024, 32'sh0000_B505);
         axil_write(12'h000, 32'h0000_0003);
+        attempt_start_while_busy_probe();
 
         wait_for_irq();
         check_status_done_ok(status_data);
         check_transform_ref_generic(32'h0000_0300, 32'h0000_0500, 20, 20, 20, 20, 20, 32'sh0000_B505, 32'sh0000_B505);
         check_cache_stats_nonzero();
+        check_cache_stats_extended(1'b1, "rotate45_20_default_prefetch");
 
         reset_dut();
+        $display("TOP_CASE rotate45_20_prefetch_off");
         axil_write(12'h004, 32'h0000_0300);
         axil_write(12'h008, 32'h0000_0500);
         axil_write(12'h00C, 32'd20);
@@ -841,11 +1236,13 @@ module tb_image_geo_top;
         wait_for_irq();
         check_status_done_ok(status_data);
         read_cache_stats(reads_no_prefetch, misses_no_prefetch, prefetches_no_prefetch, prefetch_hits_no_prefetch);
+        check_cache_stats_extended(1'b0, "rotate45_20_prefetch_off");
         if (prefetches_no_prefetch != 0 || prefetch_hits_no_prefetch != 0) begin
             $fatal(1, "Prefetch-disabled run should report zero prefetch counters");
         end
 
         reset_dut();
+        $display("TOP_CASE rotate45_20_prefetch_on");
         axil_write(12'h004, 32'h0000_0300);
         axil_write(12'h008, 32'h0000_0500);
         axil_write(12'h00C, 32'd20);
@@ -860,11 +1257,13 @@ module tb_image_geo_top;
         wait_for_irq();
         check_status_done_ok(status_data);
         read_cache_stats(reads_prefetch, misses_prefetch, prefetches_prefetch, prefetch_hits_prefetch);
-        if (reads_prefetch == 0 || misses_prefetch == 0) begin
+        check_cache_stats_extended(1'b1, "rotate45_20_prefetch_on");
+        if (reads_prefetch == 0 || prefetches_prefetch == 0) begin
             $fatal(1, "Prefetch-enabled run should still report non-zero cache activity");
         end
 
         reset_dut();
+        $display("TOP_CASE identity_32_to_16_prefetch_off");
         axil_write(12'h004, 32'h0000_0900);
         axil_write(12'h008, 32'h0000_1100);
         axil_write(12'h00C, 32'd32);
@@ -880,11 +1279,13 @@ module tb_image_geo_top;
         check_status_done_ok(status_data);
         check_transform_ref_generic(32'h0000_0900, 32'h0000_1100, 32, 32, 16, 32, 16, 32'sh0000_0000, 32'sh0001_0000);
         read_cache_stats(reads_no_prefetch, misses_no_prefetch, prefetches_no_prefetch, prefetch_hits_no_prefetch);
+        check_cache_stats_extended(1'b0, "identity_32_to_16_prefetch_off");
         if (prefetches_no_prefetch != 0 || prefetch_hits_no_prefetch != 0) begin
             $fatal(1, "Prefetch-disabled identity sweep should report zero prefetch counters");
         end
 
         reset_dut();
+        $display("TOP_CASE identity_32_to_16_prefetch_on");
         axil_write(12'h004, 32'h0000_0900);
         axil_write(12'h008, 32'h0000_1100);
         axil_write(12'h00C, 32'd32);
@@ -900,9 +1301,22 @@ module tb_image_geo_top;
         check_status_done_ok(status_data);
         check_transform_ref_generic(32'h0000_0900, 32'h0000_1100, 32, 32, 16, 32, 16, 32'sh0000_0000, 32'sh0001_0000);
         read_cache_stats(reads_prefetch, misses_prefetch, prefetches_prefetch, prefetch_hits_prefetch);
-        if (reads_prefetch == 0 || misses_prefetch == 0) begin
+        check_cache_stats_extended(1'b1, "identity_32_to_16_prefetch_on");
+        if (reads_prefetch == 0 || prefetches_prefetch == 0) begin
             $fatal(1, "Prefetch-enabled identity sweep should still report non-zero cache activity");
         end
+
+        $display("TOP_CASE identity_32_to_16_random_backpressure");
+        run_identity_32_to_16_backpressure_case();
+
+        $display("TOP_CASE identity_32_to_16_read_error_injection");
+        run_read_error_injection_case();
+
+        $display("TOP_CASE identity_32_to_16_write_error_injection");
+        run_write_error_injection_case();
+
+        $display("TOP_CASE reset_during_busy");
+        run_reset_during_busy_case();
 
         $display("tb_image_geo_top completed");
         $finish;

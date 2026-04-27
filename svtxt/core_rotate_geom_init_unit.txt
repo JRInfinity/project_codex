@@ -1,0 +1,282 @@
+`timescale 1ns/1ps
+
+module rotate_geom_init_unit #(
+    parameter int MAX_SRC_W = 7200,
+    parameter int MAX_SRC_H = 7200,
+    parameter int MAX_DST_W = 600,
+    parameter int MAX_DST_H = 600,
+    parameter int FRAC_W    = 16,
+    parameter int COORD_W   = 48,
+    parameter int GEOM_ID_W = 8
+) (
+    input  logic clk,
+    input  logic rst,
+    input  logic start,
+    input  logic [GEOM_ID_W-1:0]          start_id,
+    input  logic [$clog2(MAX_SRC_W+1)-1:0] src_w,
+    input  logic [$clog2(MAX_SRC_H+1)-1:0] src_h,
+    input  logic [$clog2(MAX_DST_W+1)-1:0] dst_w,
+    input  logic [$clog2(MAX_DST_H+1)-1:0] dst_h,
+    input  logic signed [31:0]             rot_sin_q16,
+    input  logic signed [31:0]             rot_cos_q16,
+
+    output logic                           geom_valid,
+    output logic                           geom_busy,
+    output logic                           geom_error,
+    output logic [GEOM_ID_W-1:0]           geom_id,
+    output logic signed [31:0]             scale_x_q16,
+    output logic signed [31:0]             scale_y_q16,
+    output logic signed [COORD_W-1:0]      step_x_x,
+    output logic signed [COORD_W-1:0]      step_y_x,
+    output logic signed [COORD_W-1:0]      step_x_y,
+    output logic signed [COORD_W-1:0]      step_y_y,
+    output logic signed [COORD_W-1:0]      row0_x,
+    output logic signed [COORD_W-1:0]      row0_y,
+    output logic [(MAX_SRC_W > 1 ? $clog2(MAX_SRC_W) : 1)-1:0] src_x_last,
+    output logic [(MAX_SRC_H > 1 ? $clog2(MAX_SRC_H) : 1)-1:0] src_y_last,
+    output logic signed [COORD_W-1:0]      src_x_max_q16,
+    output logic signed [COORD_W-1:0]      src_y_max_q16
+);
+
+    localparam int SRC_CFG_W = $clog2(MAX_SRC_W+1);
+    localparam int SRC_CFG_H = $clog2(MAX_SRC_H+1);
+    localparam int DST_CFG_W = $clog2(MAX_DST_W+1);
+    localparam int DST_CFG_H = $clog2(MAX_DST_H+1);
+    localparam int SRC_X_W = (MAX_SRC_W > 1) ? $clog2(MAX_SRC_W) : 1;
+    localparam int SRC_Y_W = (MAX_SRC_H > 1) ? $clog2(MAX_SRC_H) : 1;
+    localparam int INIT_MUL_W = 64;
+
+    typedef enum logic [3:0] {
+        G_IDLE,
+        G_DIV_X_INIT,
+        G_DIV_X_RUN,
+        G_DIV_Y_INIT,
+        G_DIV_Y_RUN,
+        G_CENTER,
+        G_STEP_XX,
+        G_STEP_YX_MUL,
+        G_STEP_YX,
+        G_STEP_XY,
+        G_STEP_YY,
+        G_ROW_X_MUL,
+        G_ROW_X_COMMIT,
+        G_ROW_Y_MUL,
+        G_ROW_Y_COMMIT
+    } geom_state_t;
+
+    geom_state_t state_reg;
+
+    logic [SRC_CFG_W-1:0] cfg_src_w_reg;
+    logic [SRC_CFG_H-1:0] cfg_src_h_reg;
+    logic [DST_CFG_W-1:0] cfg_dst_w_reg;
+    logic [DST_CFG_H-1:0] cfg_dst_h_reg;
+    logic signed [31:0]   cfg_rot_sin_q16_reg;
+    logic signed [31:0]   cfg_rot_cos_q16_reg;
+    logic [GEOM_ID_W-1:0] cfg_id_reg;
+
+    logic signed [COORD_W-1:0] src_cx_q16_reg;
+    logic signed [COORD_W-1:0] src_cy_q16_reg;
+    logic signed [COORD_W-1:0] dst_cx_q16_reg;
+    logic signed [COORD_W-1:0] dst_cy_q16_reg;
+    logic signed [INIT_MUL_W-1:0] step_y_x_mul_reg;
+    logic signed [INIT_MUL_W-1:0] row_mul0_reg;
+    logic signed [INIT_MUL_W-1:0] row_mul1_reg;
+
+    logic [31:0] div_dividend_reg;
+    logic [31:0] div_divisor_reg;
+    logic [31:0] div_quotient_reg;
+    logic [32:0] div_remainder_reg;
+    logic [5:0]  div_count_reg;
+    logic [32:0] div_remainder_shift_calc;
+    logic [32:0] div_remainder_next_calc;
+    logic [31:0] div_dividend_next_calc;
+    logic [31:0] div_quotient_next_calc;
+
+    assign geom_busy = (state_reg != G_IDLE);
+
+    always_comb begin
+        div_remainder_shift_calc = {div_remainder_reg[31:0], div_dividend_reg[31]};
+        div_dividend_next_calc   = {div_dividend_reg[30:0], 1'b0};
+        if (div_remainder_shift_calc >= {1'b0, div_divisor_reg}) begin
+            div_remainder_next_calc = div_remainder_shift_calc - {1'b0, div_divisor_reg};
+            div_quotient_next_calc  = {div_quotient_reg[30:0], 1'b1};
+        end else begin
+            div_remainder_next_calc = div_remainder_shift_calc;
+            div_quotient_next_calc  = {div_quotient_reg[30:0], 1'b0};
+        end
+    end
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            state_reg <= G_IDLE;
+            cfg_src_w_reg <= '0;
+            cfg_src_h_reg <= '0;
+            cfg_dst_w_reg <= '0;
+            cfg_dst_h_reg <= '0;
+            cfg_rot_sin_q16_reg <= '0;
+            cfg_rot_cos_q16_reg <= '0;
+            cfg_id_reg <= '0;
+            src_cx_q16_reg <= '0;
+            src_cy_q16_reg <= '0;
+            dst_cx_q16_reg <= '0;
+            dst_cy_q16_reg <= '0;
+            step_y_x_mul_reg <= '0;
+            row_mul0_reg <= '0;
+            row_mul1_reg <= '0;
+            div_dividend_reg <= '0;
+            div_divisor_reg <= '0;
+            div_quotient_reg <= '0;
+            div_remainder_reg <= '0;
+            div_count_reg <= '0;
+            geom_valid <= 1'b0;
+            geom_error <= 1'b0;
+            geom_id <= '0;
+            scale_x_q16 <= '0;
+            scale_y_q16 <= '0;
+            step_x_x <= '0;
+            step_y_x <= '0;
+            step_x_y <= '0;
+            step_y_y <= '0;
+            row0_x <= '0;
+            row0_y <= '0;
+            src_x_last <= '0;
+            src_y_last <= '0;
+            src_x_max_q16 <= '0;
+            src_y_max_q16 <= '0;
+        end else begin
+            geom_valid <= 1'b0;
+
+            case (state_reg)
+                G_IDLE: begin
+                    if (start) begin
+                        geom_error <= 1'b0;
+                        if ((src_w == '0) || (src_h == '0) || (dst_w == '0) || (dst_h == '0)) begin
+                            geom_error <= 1'b1;
+                            state_reg <= G_IDLE;
+                        end else begin
+                            cfg_src_w_reg <= src_w;
+                            cfg_src_h_reg <= src_h;
+                            cfg_dst_w_reg <= dst_w;
+                            cfg_dst_h_reg <= dst_h;
+                            cfg_rot_sin_q16_reg <= rot_sin_q16;
+                            cfg_rot_cos_q16_reg <= rot_cos_q16;
+                            cfg_id_reg <= start_id;
+                            src_x_last <= SRC_X_W'(src_w - 1'b1);
+                            src_y_last <= SRC_Y_W'(src_h - 1'b1);
+                            src_x_max_q16 <= ($signed(COORD_W'({1'b0, src_w})) - 1) <<< FRAC_W;
+                            src_y_max_q16 <= ($signed(COORD_W'({1'b0, src_h})) - 1) <<< FRAC_W;
+                            state_reg <= G_DIV_X_INIT;
+                        end
+                    end
+                end
+
+                G_DIV_X_INIT: begin
+                    div_dividend_reg <= 32'(cfg_src_w_reg) << FRAC_W;
+                    div_divisor_reg <= 32'(cfg_dst_w_reg);
+                    div_quotient_reg <= '0;
+                    div_remainder_reg <= '0;
+                    div_count_reg <= 6'd32;
+                    state_reg <= G_DIV_X_RUN;
+                end
+
+                G_DIV_X_RUN: begin
+                    div_dividend_reg <= div_dividend_next_calc;
+                    div_quotient_reg <= div_quotient_next_calc;
+                    div_remainder_reg <= div_remainder_next_calc;
+                    div_count_reg <= div_count_reg - 1'b1;
+                    if (div_count_reg == 6'd1) begin
+                        scale_x_q16 <= $signed(div_quotient_next_calc);
+                        state_reg <= G_DIV_Y_INIT;
+                    end
+                end
+
+                G_DIV_Y_INIT: begin
+                    div_dividend_reg <= 32'(cfg_src_h_reg) << FRAC_W;
+                    div_divisor_reg <= 32'(cfg_dst_h_reg);
+                    div_quotient_reg <= '0;
+                    div_remainder_reg <= '0;
+                    div_count_reg <= 6'd32;
+                    state_reg <= G_DIV_Y_RUN;
+                end
+
+                G_DIV_Y_RUN: begin
+                    div_dividend_reg <= div_dividend_next_calc;
+                    div_quotient_reg <= div_quotient_next_calc;
+                    div_remainder_reg <= div_remainder_next_calc;
+                    div_count_reg <= div_count_reg - 1'b1;
+                    if (div_count_reg == 6'd1) begin
+                        scale_y_q16 <= $signed(div_quotient_next_calc);
+                        state_reg <= G_CENTER;
+                    end
+                end
+
+                G_CENTER: begin
+                    src_cx_q16_reg <= ($signed(COORD_W'({1'b0, cfg_src_w_reg})) - 1) <<< (FRAC_W-1);
+                    src_cy_q16_reg <= ($signed(COORD_W'({1'b0, cfg_src_h_reg})) - 1) <<< (FRAC_W-1);
+                    dst_cx_q16_reg <= ($signed(COORD_W'({1'b0, cfg_dst_w_reg})) - 1) <<< (FRAC_W-1);
+                    dst_cy_q16_reg <= ($signed(COORD_W'({1'b0, cfg_dst_h_reg})) - 1) <<< (FRAC_W-1);
+                    state_reg <= G_STEP_XX;
+                end
+
+                G_STEP_XX: begin
+                    step_x_x <= ($signed(cfg_rot_cos_q16_reg) * $signed(scale_x_q16)) >>> FRAC_W;
+                    state_reg <= G_STEP_YX_MUL;
+                end
+
+                G_STEP_YX_MUL: begin
+                    step_y_x_mul_reg <= $signed(cfg_rot_sin_q16_reg) * $signed(scale_x_q16);
+                    state_reg <= G_STEP_YX;
+                end
+
+                G_STEP_YX: begin
+                    step_y_x <= -($signed(step_y_x_mul_reg) >>> FRAC_W);
+                    state_reg <= G_STEP_XY;
+                end
+
+                G_STEP_XY: begin
+                    step_x_y <= ($signed(cfg_rot_sin_q16_reg) * $signed(scale_y_q16)) >>> FRAC_W;
+                    state_reg <= G_STEP_YY;
+                end
+
+                G_STEP_YY: begin
+                    step_y_y <= ($signed(cfg_rot_cos_q16_reg) * $signed(scale_y_q16)) >>> FRAC_W;
+                    state_reg <= G_ROW_X_MUL;
+                end
+
+                G_ROW_X_MUL: begin
+                    row_mul0_reg <= $signed(dst_cx_q16_reg) * $signed(step_x_x);
+                    row_mul1_reg <= $signed(dst_cy_q16_reg) * $signed(step_x_y);
+                    state_reg <= G_ROW_X_COMMIT;
+                end
+
+                G_ROW_X_COMMIT: begin
+                    row0_x <= src_cx_q16_reg
+                        - $signed(row_mul0_reg >>> FRAC_W)
+                        - $signed(row_mul1_reg >>> FRAC_W);
+                    state_reg <= G_ROW_Y_MUL;
+                end
+
+                G_ROW_Y_MUL: begin
+                    row_mul0_reg <= $signed(dst_cx_q16_reg) * $signed(step_y_x);
+                    row_mul1_reg <= $signed(dst_cy_q16_reg) * $signed(step_y_y);
+                    state_reg <= G_ROW_Y_COMMIT;
+                end
+
+                G_ROW_Y_COMMIT: begin
+                    row0_y <= src_cy_q16_reg
+                        - $signed(row_mul0_reg >>> FRAC_W)
+                        - $signed(row_mul1_reg >>> FRAC_W);
+                    geom_id <= cfg_id_reg;
+                    geom_valid <= 1'b1;
+                    state_reg <= G_IDLE;
+                end
+
+                default: begin
+                    state_reg <= G_IDLE;
+                    geom_error <= 1'b1;
+                end
+            endcase
+        end
+    end
+
+endmodule

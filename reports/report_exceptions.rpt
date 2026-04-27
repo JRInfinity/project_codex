@@ -1,0 +1,40 @@
+Copyright 1986-2019 Xilinx, Inc. All Rights Reserved.
+-------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2019.2 (win64) Build 2708876 Wed Nov  6 21:40:23 MST 2019
+| Date         : Mon Apr 27 11:10:26 2026
+| Host         : DESKTOP-082C81I running 64-bit major release  (build 9200)
+| Command      : report_exceptions -file C:/Users/huawei/Desktop/project_codex/reports/report_exceptions.rpt
+| Design       : image_geo_top
+| Device       : 7z020-clg400
+| Speed File   : -1  PRODUCTION 1.11 2014-09-11
+-------------------------------------------------------------------------------------------------------------
+
+Exceptions Report
+
+Position  From                                 Through                                                                           To                                                                                Setup           Hold            Status                                  
+--------  -----------------------------------  --------------------------------------------------------------------------------  --------------------------------------------------------------------------------  --------------  --------------  ----------------------------------------
+3         [get_ports -quiet axi_rstn]          *                                                                                 [get_cells -quiet -hier -filter {IS_SEQUENTIAL && (NAME =~ *image_geo_top_0* ||   false           false           
+                                                                                                                                 NAME =~ *u_* || NAME =~ *reg*)}]                                                                                  
+4         [get_ports -quiet core_rstn]         *                                                                                 [get_cells -quiet -hier -filter {IS_SEQUENTIAL && (NAME =~ *image_geo_top_0* ||   false           false           
+                                                                                                                                 NAME =~ *u_* || NAME =~ *reg*)}]                                                                                  
+6         *                                    [get_cells -quiet -hier -filter {                                                 *                                                                                 false           false           Partially overridden path by CG 5 - FP 7
+                                               NAME =~ *u_frame_config_cdc*      ||                                                                                                                                                                
+                                               NAME =~ *                                                                                                                                                                                           
+                                               u_ctrl_result_cdc*       ||                                                                                                                                                                         
+                                               NAME =~ *u_cache_stats_cdc*       ||                                                                                                                                                                
+                                               NAME =~ *u_ddr_                                                                                                                                                                                     
+                                               read_engine/u_task_cdc*   ||                                                                                                                                                                        
+                                               NAME =~ *u_ddr_read_engine/u_result_cdc* ||                                                                                                                                                         
+                                               NAME =~                                                                                                                                                                                             
+                                                *u_ddr_write_engine/u_task_cdc*  ||                                                                                                                                                                
+                                               NAME =~ *u_ddr_write_engine/u_result_cdc*                                                                                                                                                           
+                                               }                                                                                                                                                                                                   
+                                               ]                                                                                                                                                                                                   
+7         *                                    [get_cells -quiet -hier -filter {                *                                                                                 false           false           Partially overridden path by CG 5       
+                                               NAME =~ *u_ddr_read_engine/u_async_word_fifo*                                                                                                                      
+                                               ||                                                                                                                                                                 
+                                               NAME =~ *u_ddr_write_engine/u_async_pixel_fifo*                                                                                                                    
+                                               }]                                                                                                                                                                 
+5         [get_clocks { image_geo_core_clk }]                                                                                    [get_clocks { image_geo_axi_clk }]                                                clock_group     clock_group     
+5         [get_clocks { image_geo_axi_clk }]                                                                                     [get_clocks { image_geo_core_clk }]                                               clock_group     clock_group     
+

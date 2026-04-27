@@ -29,6 +29,7 @@ module tb_scaler_ctrl;
     logic core_busy;
     logic core_done;
     logic core_error;
+    logic cache_error;
     logic row_done;
 
     logic row_start;
@@ -75,6 +76,7 @@ module tb_scaler_ctrl;
         .core_busy(core_busy),
         .core_done(core_done),
         .core_error(core_error),
+        .cache_error(cache_error),
         .row_done(row_done),
         .wb_start(row_start),
         .wb_pixel_count(row_pixel_count),
@@ -123,6 +125,7 @@ module tb_scaler_ctrl;
         core_busy        = 1'b0;
         core_done        = 1'b0;
         core_error       = 1'b0;
+        cache_error      = 1'b0;
         row_done         = 1'b0;
         row_busy         = 1'b0;
         row_done_buf     = 1'b0;
@@ -158,6 +161,27 @@ module tb_scaler_ctrl;
         wait (done);
         if (error) $fatal(1, "ctrl should not assert error");
         if (write_addr !== 32'h0000_0208) $fatal(1, "final write address mismatch: %h", write_addr);
+
+        @(posedge clk);
+        sys_rst <= 1'b1;
+        repeat (3) @(posedge clk);
+        sys_rst <= 1'b0;
+        repeat (2) @(posedge clk);
+
+        @(posedge clk);
+        start <= 1'b1;
+        @(posedge clk);
+        start <= 1'b0;
+        wait (core_start);
+        @(posedge clk);
+        cache_error <= 1'b1;
+        @(posedge clk);
+        cache_error <= 1'b0;
+        wait (error);
+        if (!error) $fatal(1, "ctrl should assert error after cache_error");
+        @(posedge clk);
+        if (busy) $fatal(1, "ctrl should leave busy after cache_error");
+        $display("SCALER_CTRL_CACHE_ERROR_PASS");
 
         $display("tb_scaler_ctrl completed");
         $finish;

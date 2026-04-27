@@ -3,10 +3,15 @@
 Relevant files:
 
 - [image_geo_regs.h](/C:/Users/huawei/Desktop/project_codex/sw/include/image_geo_regs.h)
+- [image_geo_protocol.h](/C:/Users/huawei/Desktop/project_codex/sw/include/image_geo_protocol.h)
+- [image_geo_driver.h](/C:/Users/huawei/Desktop/project_codex/sw/include/image_geo_driver.h)
+- [transport_uart.h](/C:/Users/huawei/Desktop/project_codex/sw/include/transport_uart.h)
 - [image_geo_demo.c](/C:/Users/huawei/Desktop/project_codex/sw/examples/image_geo_demo.c)
 - [image_geo_bringup.c](/C:/Users/huawei/Desktop/project_codex/sw/examples/image_geo_bringup.c)
 - [image_geo_sd_bringup.c](/C:/Users/huawei/Desktop/project_codex/sw/examples/image_geo_sd_bringup.c)
 - [image_geo_sd_case_bringup.c](/C:/Users/huawei/Desktop/project_codex/sw/examples/image_geo_sd_case_bringup.c)
+- [image_geo_uart_service.c](/C:/Users/huawei/Desktop/project_codex/sw/examples/image_geo_uart_service.c)
+- [run_fpga_demo.py](/C:/Users/huawei/Desktop/project_codex/tools/pc/run_fpga_demo.py)
 
 ## What to replace before running
 
@@ -142,6 +147,47 @@ Typical use:
 Default checked-in case file path in software:
 
 - `0:/test_640x480_case.txt`
+
+## UART 在线传图流程
+
+如果你希望板子上电后常驻等待 PC 发图，而不是每次都从 SD 卡读输入图，可以使用：
+
+- 板端主程序：[image_geo_uart_service.c](/C:/Users/huawei/Desktop/project_codex/sw/examples/image_geo_uart_service.c)
+- 板端驱动层：[image_geo_driver.c](/C:/Users/huawei/Desktop/project_codex/sw/runtime/image_geo_driver.c)
+- 板端传输层：[transport_uart.c](/C:/Users/huawei/Desktop/project_codex/sw/runtime/transport_uart.c)
+- PC 端脚本：[run_fpga_demo.py](/C:/Users/huawei/Desktop/project_codex/tools/pc/run_fpga_demo.py)
+
+推荐的第一轮联调步骤：
+
+1. 在 Vitis 中把 `image_geo_uart_service.c` 作为 `main.c`
+2. 把 `sw/include` 加入 include 路径
+3. 把 `sw/runtime/image_geo_driver.c` 和 `sw/runtime/transport_uart.c` 加入应用工程
+4. 编译并下载到板子
+5. 打开串口终端，确认板端打印出“等待 PC 请求”
+6. 在 PC 上执行：
+
+```bash
+python tools/pc/run_fpga_demo.py ^
+  --port COM5 ^
+  --baudrate 921600 ^
+  --input-bin matlab/out/test_640x480.bin ^
+  --src-w 640 --src-h 480 ^
+  --dst-w 640 --dst-h 480 ^
+  --rot-sin-q16 0 ^
+  --rot-cos-q16 65536
+```
+
+说明：
+
+- `--src-stride` 和 `--dst-stride` 不写时，默认分别等于 `src_w` 和 `dst_w`
+- `--rot-sin-q16 0 --rot-cos-q16 65536` 表示恒等变换
+- 输出文件默认保存在输入文件同目录下，文件名后缀为 `_fpga_out.bin`
+
+第一轮建议：
+
+- 先用 `64x64` 或 `128x128` 小图
+- 确认链路稳定后再试 `640x480`
+- 如果板端长时间没有回包，优先检查串口号、波特率、UART 设备号以及请求头参数
 
 ## Typical integration in Vitis SDK / bare-metal
 

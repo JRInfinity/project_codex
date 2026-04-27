@@ -1,0 +1,13 @@
+workload_id,rtl_top,tile_w,tile_h,set_num,way_num,merge_max_x,fifo_depth,lead_pixels,runtime_lead_pixels,runtime_merge_max_x_eff,runtime_merge_min_x,runtime_fifo_depth_eff,runtime_fifo_age_limit,runtime_prefetch_throttle_cycles,runtime_scheduler_policy,score
+cal128_r75_p0,tb_image_geo_top_perf_single_cal128_rotate75_on,8,8,32,2,4,16,16,16,4,1,16,0,0,0,0
+cal128_r75_p1,tb_image_geo_top_perf_single_cal128_rotate75_on,8,8,32,2,4,16,16,16,4,4,16,200,0,1,1
+cal128_r75_p2,tb_image_geo_top_perf_single_cal128_rotate75_on,8,8,32,2,4,16,16,16,4,1,16,0,64,2,2
+cal128_r75_p3,tb_image_geo_top_perf_single_cal128_rotate75_on,8,8,32,2,4,16,16,16,4,4,16,200,64,3,3
+cal256_r75_p0,tb_image_geo_top_perf_single_cal256_rotate75_on,8,8,32,2,4,16,16,16,4,1,16,0,0,0,4
+cal256_r75_p1,tb_image_geo_top_perf_single_cal256_rotate75_on,8,8,32,2,4,16,16,16,4,4,16,200,0,1,5
+cal256_r75_p2,tb_image_geo_top_perf_single_cal256_rotate75_on,8,8,32,2,4,16,16,16,4,1,16,0,64,2,6
+cal256_r75_p3,tb_image_geo_top_perf_single_cal256_rotate75_on,8,8,32,2,4,16,16,16,4,4,16,200,64,3,7
+proxy512_r45_p0,tb_image_geo_top_perf_single_proxy512_rotate45_on,8,8,32,2,4,16,16,16,4,1,16,0,0,0,8
+proxy512_r45_p1,tb_image_geo_top_perf_single_proxy512_rotate45_on,8,8,32,2,4,16,16,16,4,4,16,200,0,1,9
+proxy512_r45_p2,tb_image_geo_top_perf_single_proxy512_rotate45_on,8,8,32,2,4,16,16,16,4,1,16,0,64,2,10
+proxy512_r45_p3,tb_image_geo_top_perf_single_proxy512_rotate45_on,8,8,32,2,4,16,16,16,4,4,16,200,64,3,11

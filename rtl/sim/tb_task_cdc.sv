@@ -37,12 +37,13 @@ module tb_task_cdc;
         .ADDR_W(ADDR_W)
     ) dut (
         .src_clk(src_clk),
-        .sys_rst(sys_rst),
+        .src_rst(sys_rst),
         .task_valid_src(task_valid_src),
         .task_addr_src(task_addr_src),
         .task_byte_count_src(task_byte_count_src),
         .task_ready_src(task_ready_src),
         .dst_clk(dst_clk),
+        .dst_rst(sys_rst),
         .task_valid_dst(task_valid_dst),
         .task_addr_dst(task_addr_dst),
         .task_byte_count_dst(task_byte_count_dst),

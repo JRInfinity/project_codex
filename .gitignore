@@ -49,3 +49,6 @@ Thumbs.db
 __pycache__/
 *.pyc
 *.asv
+matlab/.matlab_prefdir/
+matlab/out/
+matlab/*.mat

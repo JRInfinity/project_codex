@@ -1,89 +1,167 @@
 `timescale 1ns/1ps
 
-module cache_stats_cdc (
-    input  logic        src_clk,
-    input  logic        sys_rst,
-    input  logic        stats_valid_src,
-    input  logic [31:0] read_starts_src,
-    input  logic [31:0] misses_src,
-    input  logic [31:0] prefetch_starts_src,
-    input  logic [31:0] prefetch_hits_src,
-    output logic        stats_ready_src,
+module cache_stats_cdc #(
+    parameter int PAYLOAD_W = 32
+) (
+    input  logic                 src_clk,
+    input  logic                 src_rst,
+    input  logic                 stats_valid_src,
+    input  logic [PAYLOAD_W-1:0] stats_payload_src,
+    output logic                 stats_ready_src,
 
-    input  logic        dst_clk,
-    output logic [31:0] read_starts_dst,
-    output logic [31:0] misses_dst,
-    output logic [31:0] prefetch_starts_dst,
-    output logic [31:0] prefetch_hits_dst
+    input  logic                 dst_clk,
+    input  logic                 dst_rst,
+    output logic                 stats_valid_dst,
+    output logic [PAYLOAD_W-1:0] stats_payload_dst
 );
 
-    logic req_toggle_src_reg;
-    logic ack_toggle_dst_reg;
-    logic src_busy_reg;
-    logic [31:0] read_starts_hold_reg;
-    logic [31:0] misses_hold_reg;
-    logic [31:0] prefetch_starts_hold_reg;
-    logic [31:0] prefetch_hits_hold_reg;
-    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync1_reg;
-    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync2_reg;
-    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync1_reg;
-    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync2_reg;
-    logic req_toggle_dst_seen_reg;
+    localparam int WORD_W = 32;
+    localparam int WORDS = (PAYLOAD_W + WORD_W - 1) / WORD_W;
+    localparam int WORD_IDX_W = (WORDS > 1) ? $clog2(WORDS) : 1;
+    localparam int FIFO_DATA_W = WORD_W + 1;
+    localparam int FIFO_DEPTH =
+        (WORDS <= 4)   ? 16  :
+        (WORDS <= 8)   ? 16  :
+        (WORDS <= 16)  ? 32  :
+        (WORDS <= 32)  ? 64  :
+        (WORDS <= 64)  ? 128 :
+        (WORDS <= 128) ? 256 : 512;
 
-    assign stats_ready_src = !src_busy_reg;
+    logic [PAYLOAD_W-1:0] src_payload_hold_reg;
+    logic                 src_send_active_reg;
+    logic [WORD_IDX_W-1:0] src_word_idx_reg;
+
+    logic fifo_wr_en;
+    logic [FIFO_DATA_W-1:0] fifo_wr_data;
+    logic fifo_full;
+    logic fifo_almost_full;
+    logic fifo_overflow;
+    logic [$clog2(FIFO_DEPTH+1)-1:0] fifo_wr_count;
+
+    logic fifo_rd_en;
+    logic [FIFO_DATA_W-1:0] fifo_rd_data;
+    logic fifo_empty;
+    logic fifo_underflow;
+    logic [$clog2(FIFO_DEPTH+1)-1:0] fifo_rd_count;
+
+    logic [WORD_IDX_W-1:0] dst_word_idx_reg;
+    logic [PAYLOAD_W-1:0] dst_payload_build_reg;
+
+    initial begin
+        if ((PAYLOAD_W % WORD_W) != 0) begin
+            $error("cache_stats_cdc PAYLOAD_W (%0d) must be a multiple of 32", PAYLOAD_W);
+        end
+        if (WORDS > FIFO_DEPTH - 2) begin
+            $error("cache_stats_cdc internal FIFO too small: words=%0d depth=%0d", WORDS, FIFO_DEPTH);
+        end
+    end
+
+    assign stats_ready_src = !src_send_active_reg;
+    assign fifo_wr_en = src_send_active_reg && !fifo_full;
+    assign fifo_wr_data = {
+        (src_word_idx_reg == WORD_IDX_W'(WORDS-1)),
+        src_payload_hold_reg[src_word_idx_reg*WORD_W +: WORD_W]
+    };
+
+    async_word_fifo #(
+        .DATA_W(FIFO_DATA_W),
+        .DEPTH(FIFO_DEPTH),
+        .ALMOST_FULL_MARGIN(WORDS + 2)
+    ) u_stats_word_fifo (
+        .wr_clk(src_clk),
+        .wr_rst(src_rst),
+        .wr_en(fifo_wr_en),
+        .wr_data(fifo_wr_data),
+        .full(fifo_full),
+        .almost_full(fifo_almost_full),
+        .wr_count(fifo_wr_count),
+        .overflow(fifo_overflow),
+
+        .rd_clk(dst_clk),
+        .rd_rst(dst_rst),
+        .rd_en(fifo_rd_en),
+        .rd_data(fifo_rd_data),
+        .empty(fifo_empty),
+        .rd_count(fifo_rd_count),
+        .underflow(fifo_underflow)
+    );
 
     always_ff @(posedge src_clk) begin
-        if (sys_rst) begin
-            req_toggle_src_reg        <= 1'b0;
-            src_busy_reg              <= 1'b0;
-            read_starts_hold_reg      <= '0;
-            misses_hold_reg           <= '0;
-            prefetch_starts_hold_reg  <= '0;
-            prefetch_hits_hold_reg    <= '0;
-            ack_toggle_src_sync1_reg  <= 1'b0;
-            ack_toggle_src_sync2_reg  <= 1'b0;
+        if (src_rst) begin
+            src_payload_hold_reg <= '0;
+            src_send_active_reg <= 1'b0;
+            src_word_idx_reg <= '0;
         end else begin
-            ack_toggle_src_sync1_reg <= ack_toggle_dst_reg;
-            ack_toggle_src_sync2_reg <= ack_toggle_src_sync1_reg;
-
-            if (src_busy_reg && (ack_toggle_src_sync2_reg == req_toggle_src_reg)) begin
-                src_busy_reg <= 1'b0;
+            if (stats_valid_src && !src_send_active_reg) begin
+                src_payload_hold_reg <= stats_payload_src;
+                src_word_idx_reg <= '0;
+                src_send_active_reg <= 1'b1;
             end
 
-            if (stats_valid_src && !src_busy_reg) begin
-                read_starts_hold_reg     <= read_starts_src;
-                misses_hold_reg          <= misses_src;
-                prefetch_starts_hold_reg <= prefetch_starts_src;
-                prefetch_hits_hold_reg   <= prefetch_hits_src;
-                req_toggle_src_reg       <= ~req_toggle_src_reg;
-                src_busy_reg             <= 1'b1;
+            if (fifo_wr_en) begin
+                if (src_word_idx_reg == WORD_IDX_W'(WORDS-1)) begin
+                    src_word_idx_reg <= '0;
+                    src_send_active_reg <= 1'b0;
+                end else begin
+                    src_word_idx_reg <= src_word_idx_reg + 1'b1;
+                end
             end
+        end
+    end
+
+    assign fifo_rd_en = !fifo_empty;
+
+    always_ff @(posedge dst_clk) begin
+        if (dst_rst) begin
+            dst_word_idx_reg <= '0;
+            dst_payload_build_reg <= '0;
+            stats_payload_dst <= '0;
+            stats_valid_dst <= 1'b0;
+        end else begin
+            stats_valid_dst <= 1'b0;
+
+            if (fifo_rd_en) begin
+                dst_payload_build_reg[dst_word_idx_reg*WORD_W +: WORD_W] <= fifo_rd_data[WORD_W-1:0];
+
+                if (fifo_rd_data[WORD_W]) begin
+                    stats_payload_dst <= dst_payload_build_reg;
+                    stats_payload_dst[dst_word_idx_reg*WORD_W +: WORD_W] <= fifo_rd_data[WORD_W-1:0];
+                    stats_valid_dst <= 1'b1;
+                    dst_word_idx_reg <= '0;
+                end else if (dst_word_idx_reg == WORD_IDX_W'(WORDS-1)) begin
+                    dst_word_idx_reg <= '0;
+                end else begin
+                    dst_word_idx_reg <= dst_word_idx_reg + 1'b1;
+                end
+            end
+        end
+    end
+
+`ifndef SYNTHESIS
+    logic [PAYLOAD_W-1:0] stats_payload_src_prev_reg;
+    logic                 stats_valid_src_prev_reg;
+
+    always_ff @(posedge src_clk) begin
+        if (src_rst) begin
+            stats_payload_src_prev_reg <= '0;
+            stats_valid_src_prev_reg <= 1'b0;
+        end else begin
+            if (stats_valid_src_prev_reg && stats_valid_src && !stats_ready_src &&
+                (stats_payload_src !== stats_payload_src_prev_reg)) begin
+                $error("cache_stats_cdc stats_payload_src changed while waiting for ready");
+            end
+            stats_payload_src_prev_reg <= stats_payload_src;
+            stats_valid_src_prev_reg <= stats_valid_src;
         end
     end
 
     always_ff @(posedge dst_clk) begin
-        if (sys_rst) begin
-            req_toggle_dst_sync1_reg <= 1'b0;
-            req_toggle_dst_sync2_reg <= 1'b0;
-            req_toggle_dst_seen_reg  <= 1'b0;
-            read_starts_dst          <= '0;
-            misses_dst               <= '0;
-            prefetch_starts_dst      <= '0;
-            prefetch_hits_dst        <= '0;
-            ack_toggle_dst_reg       <= 1'b0;
-        end else begin
-            req_toggle_dst_sync1_reg <= req_toggle_src_reg;
-            req_toggle_dst_sync2_reg <= req_toggle_dst_sync1_reg;
-
-            if (req_toggle_dst_sync2_reg != req_toggle_dst_seen_reg) begin
-                read_starts_dst      <= read_starts_hold_reg;
-                misses_dst           <= misses_hold_reg;
-                prefetch_starts_dst  <= prefetch_starts_hold_reg;
-                prefetch_hits_dst    <= prefetch_hits_hold_reg;
-                req_toggle_dst_seen_reg <= req_toggle_dst_sync2_reg;
-                ack_toggle_dst_reg   <= ~ack_toggle_dst_reg;
-            end
+        if (!dst_rst && fifo_rd_en && fifo_rd_data[WORD_W] &&
+            (dst_word_idx_reg != WORD_IDX_W'(WORDS-1))) begin
+            $error("cache_stats_cdc end marker arrived at word %0d, expected %0d",
+                   dst_word_idx_reg, WORDS-1);
         end
     end
+`endif
 
 endmodule

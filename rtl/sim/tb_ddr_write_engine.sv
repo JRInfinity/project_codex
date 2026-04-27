@@ -46,7 +46,8 @@ module tb_ddr_write_engine;
     ) dut (
         .axi_clk(axi_clk),
         .core_clk(core_clk),
-        .sys_rst(sys_rst),
+        .axi_rst(sys_rst),
+        .core_rst(sys_rst),
         .task_start(task_start),
         .task_addr(task_addr),
         .task_byte_count(task_byte_count),

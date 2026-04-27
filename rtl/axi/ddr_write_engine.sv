@@ -15,7 +15,8 @@ module ddr_write_engine #(
 ) (
     input  logic               axi_clk,
     input  logic               core_clk,
-    input  logic               sys_rst,
+    input  logic               axi_rst,
+    input  logic               core_rst,
     input  logic               task_start,
     input  logic [ADDR_W-1:0]  task_addr,
     input  logic [31:0]        task_byte_count,
@@ -65,7 +66,7 @@ module ddr_write_engine #(
     assign task_error        = result_error_evt_core;
 
     always_ff @(posedge core_clk) begin
-        if (sys_rst) begin
+        if (core_rst) begin
             task_active_reg <= 1'b0;
         end else begin
             if (task_start_accept) begin
@@ -80,12 +81,13 @@ module ddr_write_engine #(
         .ADDR_W(ADDR_W)
     ) u_task_cdc (
         .src_clk(core_clk),
-        .sys_rst(sys_rst),
+        .src_rst(core_rst),
         .task_valid_src(task_start_accept),
         .task_addr_src(task_addr),
         .task_byte_count_src(task_byte_count),
         .task_ready_src(task_ready_core),
         .dst_clk(axi_clk),
+        .dst_rst(axi_rst),
         .task_valid_dst(task_valid_axi),
         .task_addr_dst(task_addr_axi),
         .task_byte_count_dst(task_byte_count_axi),
@@ -94,12 +96,13 @@ module ddr_write_engine #(
 
     result_cdc u_result_cdc (
         .src_clk(axi_clk),
-        .sys_rst(sys_rst),
+        .src_rst(axi_rst),
         .result_valid_src(result_valid_axi),
         .result_done_src(result_done_axi),
         .result_error_src(result_error_axi),
         .result_ready_src(),
         .dst_clk(core_clk),
+        .dst_rst(core_rst),
         .result_valid_dst(result_valid_core),
         .result_done_dst(result_done_evt_core),
         .result_error_dst(result_error_evt_core)
@@ -111,7 +114,7 @@ module ddr_write_engine #(
         .ALMOST_FULL_MARGIN(8)
     ) u_async_pixel_fifo (
         .wr_clk(core_clk),
-        .sys_rst(sys_rst),
+        .wr_rst(core_rst),
         .wr_en(in_valid && in_ready),
         .wr_data(in_data),
         .full(pixel_fifo_full),
@@ -119,6 +122,7 @@ module ddr_write_engine #(
         .wr_count(),
         .overflow(),
         .rd_clk(axi_clk),
+        .rd_rst(axi_rst),
         .rd_en(pixel_fifo_rd_en),
         .rd_data(pixel_fifo_rd_data),
         .empty(pixel_fifo_empty),
@@ -134,7 +138,7 @@ module ddr_write_engine #(
         .PIXEL_W(PIXEL_W)
     ) u_pixel_packer (
         .clk(axi_clk),
-        .sys_rst(sys_rst),
+        .sys_rst(axi_rst),
         .task_start(start_accept_axi),
         .task_addr(task_addr_axi),
         .task_byte_count(task_byte_count_axi),
@@ -154,7 +158,7 @@ module ddr_write_engine #(
         .AXI_ID_W(AXI_ID_W)
     ) u_axi_burst_writer (
         .clk(axi_clk),
-        .sys_rst(sys_rst),
+        .sys_rst(axi_rst),
         .task_valid(start_accept_axi),
         .task_ready(),
         .task_busy(task_busy_axi),

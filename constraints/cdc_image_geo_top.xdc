@@ -6,30 +6,22 @@
 # direct constraint commands.
 #
 # Default target:
-# - `image_geo_top` instantiated in a wrapper / Block Design
-# - instance path matched by `*image_geo_top_0*` (the default name used by the
-#   checked-in BD creation script)
+# - wrapper / Block Design top ports named `axi_clk` and `core_clk`, or
+#   `image_geo_top` synthesized directly as the top module by report scripts.
 #
 # Current intended operating point:
 # - axi_clk  = 200 MHz
 # - core_clk = 100 MHz
 #
-# If your BD uses a different instance name, update the `*image_geo_top_0*`
-# pattern below to match the generated wrapper hierarchy.
-# If `image_geo_top` is the synthesis top instead of an instance under a wrapper,
-# replace the `get_pins -hier *image_geo_top_0*/...` clock/reset endpoints below
-# with `get_ports ...`.
+# If your BD hides these clocks inside instance pins instead of wrapper ports,
+# add a wrapper-specific XDC rather than using unsupported Tcl control flow here.
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # Clocks
 # -----------------------------------------------------------------------------
-create_clock -name image_geo_axi_clk  -period 5.000  [get_pins -quiet -hier *image_geo_top_0*/axi_clk]
-create_clock -name image_geo_core_clk -period 10.000 [get_pins -quiet -hier *image_geo_top_0*/core_clk]
-
-# Top-level alternative when `image_geo_top` is synthesized directly:
-# create_clock -name image_geo_axi_clk  -period 5.000  [get_ports axi_clk]
-# create_clock -name image_geo_core_clk -period 10.000 [get_ports core_clk]
+create_clock -name image_geo_axi_clk  -period 5.000  [get_ports -quiet axi_clk]
+create_clock -name image_geo_core_clk -period 10.000 [get_ports -quiet core_clk]
 
 # -----------------------------------------------------------------------------
 # Reset ports/pins
@@ -37,16 +29,12 @@ create_clock -name image_geo_core_clk -period 10.000 [get_pins -quiet -hier *ima
 # signals and should not be used as timing startpoints for regular datapaths.
 # -----------------------------------------------------------------------------
 set_false_path \
-    -from [get_pins -quiet -hier *image_geo_top_0*/axi_rstn] \
-    -to   [get_cells -quiet -hier -filter {NAME =~ *image_geo_top_0* && IS_SEQUENTIAL}]
+    -from [get_ports -quiet axi_rstn] \
+    -to   [get_cells -quiet -hier -filter {IS_SEQUENTIAL && (NAME =~ *image_geo_top_0* || NAME =~ *u_* || NAME =~ *reg*)}]
 
 set_false_path \
-    -from [get_pins -quiet -hier *image_geo_top_0*/core_rstn] \
-    -to   [get_cells -quiet -hier -filter {NAME =~ *image_geo_top_0* && IS_SEQUENTIAL}]
-
-# Top-level alternative when `image_geo_top` is synthesized directly:
-# set_false_path -from [get_ports axi_rstn]  -to [get_cells -quiet -hier -filter {NAME =~ *image_geo_top* && IS_SEQUENTIAL}]
-# set_false_path -from [get_ports core_rstn] -to [get_cells -quiet -hier -filter {NAME =~ *image_geo_top* && IS_SEQUENTIAL}]
+    -from [get_ports -quiet core_rstn] \
+    -to   [get_cells -quiet -hier -filter {IS_SEQUENTIAL && (NAME =~ *image_geo_top_0* || NAME =~ *u_* || NAME =~ *reg*)}]
 
 # -----------------------------------------------------------------------------
 # Main asynchronous relationship
@@ -72,6 +60,14 @@ set_property ASYNC_REG TRUE \
 set_property SHREG_EXTRACT NO \
     [get_cells -quiet -hier -regexp {.*(ack_toggle_.*sync[12]_reg|req_toggle_.*sync[12]_reg).*}]
 
+# Reset synchronizers added in the RTL use async assertion and synchronous
+# release in each clock domain.
+set_property ASYNC_REG TRUE \
+    [get_cells -quiet -hier -regexp {.*u_.*reset_sync.*rst_pipe_reg.*}]
+
+set_property SHREG_EXTRACT NO \
+    [get_cells -quiet -hier -regexp {.*u_.*reset_sync.*rst_pipe_reg.*}]
+
 # -----------------------------------------------------------------------------
 # Specific CDC/FIFO path exclusions
 # These are technically redundant with set_clock_groups, but they make the CDC
@@ -92,6 +88,12 @@ set_false_path -through [get_cells -quiet -hier -filter {
     NAME =~ *u_ddr_read_engine/u_async_word_fifo* ||
     NAME =~ *u_ddr_write_engine/u_async_pixel_fifo*
 }]
+
+# Config, task, result and cache-stat payloads now cross domains through
+# async FIFO based CDC blocks, so there is no remaining wide bundled-data
+# payload path that needs a max-delay sideband constraint here. If a future
+# req/ack bundled-data CDC is added, constrain that specific payload path in
+# the owning wrapper instead of reintroducing a broad hierarchical regexp.
 
 # -----------------------------------------------------------------------------
 # Notes for Block Design integration

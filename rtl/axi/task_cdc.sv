@@ -1,90 +1,70 @@
 `timescale 1ns/1ps
 
-// 模块职责：
-// 1. 将一次任务请求从 src_clk 域传到 dst_clk 域
-// 2. 使用 req/ack toggle 握手保证多比特载荷跨时钟域稳定
-// 3. 地址和长度载荷与 toggle 捆绑，约束上需保证 bundled-data 路径时序
 module task_cdc #(
     parameter int ADDR_W = 32
 ) (
     input  logic              src_clk,
-    input  logic              sys_rst,
+    input  logic              src_rst,
     input  logic              task_valid_src,
     input  logic [ADDR_W-1:0] task_addr_src,
     input  logic [31:0]       task_byte_count_src,
     output logic              task_ready_src,
+
     input  logic              dst_clk,
+    input  logic              dst_rst,
     output logic              task_valid_dst,
     output logic [ADDR_W-1:0] task_addr_dst,
     output logic [31:0]       task_byte_count_dst,
     input  logic              task_ready_dst
 );
 
-    logic              req_toggle_src_reg; // 源时钟域的请求 toggle 寄存器
-    logic              ack_toggle_dst_reg; // 目标时钟域的应答 toggle 寄存器
-    logic              src_busy_reg;       // 源时钟域的忙标志
-    logic [ADDR_W-1:0] task_addr_hold_reg; // 源时钟域的任务地址保持寄存器
-    logic [31:0]       task_byte_count_hold_reg; // 源时钟域的任务字节计数保持寄存器
-    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync1_reg; // 同步到源时钟域的应答 toggle 寄存器 1
-    (* ASYNC_REG = "TRUE" *) logic ack_toggle_src_sync2_reg; // 同步到源时钟域的应答 toggle 寄存器 2
-    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync1_reg; // 同步到目标时钟域的请求 toggle 寄存器 1
-    (* ASYNC_REG = "TRUE" *) logic req_toggle_dst_sync2_reg; // 同步到目标时钟域的请求 toggle 寄存器 2
-    logic req_toggle_dst_seen_reg; // 目标时钟域已看到的请求 toggle 值
+    localparam int PAYLOAD_W = ADDR_W + 32;
 
-    assign task_ready_src = !src_busy_reg;
+    logic [PAYLOAD_W-1:0] fifo_wr_data;
+    logic [PAYLOAD_W-1:0] fifo_rd_data;
+    logic fifo_full;
+    logic fifo_empty;
+    logic fifo_almost_full;
+    logic fifo_overflow;
+    logic fifo_underflow;
+    logic [3:0] fifo_wr_count;
+    logic [3:0] fifo_rd_count;
 
+    assign fifo_wr_data = {task_byte_count_src, task_addr_src};
+    assign task_ready_src = !fifo_full && (fifo_wr_count == '0);
+    assign task_valid_dst = !fifo_empty;
+    assign task_addr_dst = fifo_rd_data[ADDR_W-1:0];
+    assign task_byte_count_dst = fifo_rd_data[ADDR_W +: 32];
+
+    async_word_fifo #(
+        .DATA_W(PAYLOAD_W),
+        .DEPTH(16),
+        .ALMOST_FULL_MARGIN(2)
+    ) u_task_fifo (
+        .wr_clk(src_clk),
+        .wr_rst(src_rst),
+        .wr_en(task_valid_src && task_ready_src),
+        .wr_data(fifo_wr_data),
+        .full(fifo_full),
+        .almost_full(fifo_almost_full),
+        .wr_count(fifo_wr_count),
+        .overflow(fifo_overflow),
+
+        .rd_clk(dst_clk),
+        .rd_rst(dst_rst),
+        .rd_en(task_valid_dst && task_ready_dst),
+        .rd_data(fifo_rd_data),
+        .empty(fifo_empty),
+        .rd_count(fifo_rd_count),
+        .underflow(fifo_underflow)
+    );
+
+`ifndef SYNTHESIS
     always_ff @(posedge src_clk) begin
-        if (sys_rst) begin
-            req_toggle_src_reg       <= 1'b0;
-            src_busy_reg             <= 1'b0;
-            task_addr_hold_reg       <= '0;
-            task_byte_count_hold_reg <= '0;
-            ack_toggle_src_sync1_reg <= 1'b0;
-            ack_toggle_src_sync2_reg <= 1'b0;
-        end else begin
-            ack_toggle_src_sync1_reg <= ack_toggle_dst_reg;
-            ack_toggle_src_sync2_reg <= ack_toggle_src_sync1_reg;
-
-            // A toggle transfer is complete once the synchronized ack catches
-            // up to the current req value.
-            if (src_busy_reg && (ack_toggle_src_sync2_reg == req_toggle_src_reg)) begin
-                src_busy_reg <= 1'b0;
-            end
-
-            if (task_valid_src && !src_busy_reg) begin
-                task_addr_hold_reg       <= task_addr_src;
-                task_byte_count_hold_reg <= task_byte_count_src;
-                req_toggle_src_reg       <= ~req_toggle_src_reg;
-                src_busy_reg             <= 1'b1;
-            end
+        if (!src_rst && task_valid_src && !task_ready_src) begin
+            $error("task_cdc overflow: task_valid_src asserted while FIFO full");
         end
     end
-
-    always_ff @(posedge dst_clk) begin
-        if (sys_rst) begin
-            req_toggle_dst_sync1_reg <= 1'b0;
-            req_toggle_dst_sync2_reg <= 1'b0;
-            req_toggle_dst_seen_reg  <= 1'b0;
-            task_valid_dst           <= 1'b0;
-            task_addr_dst            <= '0;
-            task_byte_count_dst      <= '0;
-            ack_toggle_dst_reg       <= 1'b0;
-        end else begin
-            req_toggle_dst_sync1_reg <= req_toggle_src_reg;
-            req_toggle_dst_sync2_reg <= req_toggle_dst_sync1_reg;
-
-            if (!task_valid_dst && (req_toggle_dst_sync2_reg != req_toggle_dst_seen_reg)) begin
-                task_addr_dst           <= task_addr_hold_reg;
-                task_byte_count_dst     <= task_byte_count_hold_reg;
-                task_valid_dst          <= 1'b1;
-                req_toggle_dst_seen_reg <= req_toggle_dst_sync2_reg;
-            end
-
-            if (task_valid_dst && task_ready_dst) begin
-                task_valid_dst     <= 1'b0;
-                ack_toggle_dst_reg <= ~ack_toggle_dst_reg;
-            end
-        end
-    end
+`endif
 
 endmodule

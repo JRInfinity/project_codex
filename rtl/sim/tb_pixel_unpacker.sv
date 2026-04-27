@@ -17,6 +17,7 @@ module tb_pixel_unpacker;
     logic               task_start;
     logic [ADDR_W-1:0]  task_addr;
     logic [31:0]        task_byte_count;
+    logic [31:0]        task_row_byte_count;
     logic               reader_status_valid;
     logic               reader_done_evt;
     logic               reader_error_evt;
@@ -26,7 +27,10 @@ module tb_pixel_unpacker;
     logic               fifo_underflow;
     logic [PIXEL_W-1:0] pixel_data;
     logic               pixel_valid;
+    logic               pixel_row_last;
     logic               pixel_ready;
+    logic               task_done_level;
+    logic               task_error_level;
     logic               task_done_pulse;
     logic               task_error_pulse;
     logic               task_error_flag;
@@ -54,6 +58,7 @@ module tb_pixel_unpacker;
         .task_start(task_start),
         .task_addr(task_addr),
         .task_byte_count(task_byte_count),
+        .task_row_byte_count(task_row_byte_count),
         .reader_status_valid(reader_status_valid),
         .reader_done_evt(reader_done_evt),
         .reader_error_evt(reader_error_evt),
@@ -63,7 +68,10 @@ module tb_pixel_unpacker;
         .fifo_underflow(fifo_underflow),
         .pixel_data(pixel_data),
         .pixel_valid(pixel_valid),
+        .pixel_row_last(pixel_row_last),
         .pixel_ready(pixel_ready),
+        .task_done_level(task_done_level),
+        .task_error_level(task_error_level),
         .task_done_pulse(task_done_pulse),
         .task_error_pulse(task_error_pulse),
         .task_error_flag(task_error_flag)
@@ -102,6 +110,7 @@ module tb_pixel_unpacker;
             task_start         = 1'b0;
             task_addr          = '0;
             task_byte_count    = '0;
+            task_row_byte_count = '0;
             reader_status_valid = 1'b0;
             reader_done_evt    = 1'b0;
             reader_error_evt   = 1'b0;
@@ -121,6 +130,7 @@ module tb_pixel_unpacker;
             @(posedge core_clk);
             task_addr       <= addr;
             task_byte_count <= byte_count;
+            task_row_byte_count <= byte_count;
             task_start      <= 1'b1;
             @(posedge core_clk);
             task_start      <= 1'b0;

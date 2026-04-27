@@ -6,10 +6,14 @@ module tb_src_tile_cache;
     localparam int ADDR_W    = 32;
     localparam int MAX_SRC_W = 32;
     localparam int MAX_SRC_H = 32;
+    localparam int MAX_DST_W = 32;
+    localparam int MAX_DST_H = 32;
     localparam int TILE_W    = 16;
     localparam int TILE_H    = 16;
     localparam int TILE_NUM  = 2;
+    localparam int COORD_W   = 48;
     localparam int MEM_BYTES = 4096;
+    localparam signed [COORD_W-1:0] GEOM_ONE_Q16 = 48'sd65536;
 
     logic clk;
     logic sys_rst;
@@ -19,17 +23,23 @@ module tb_src_tile_cache;
     logic [ADDR_W-1:0]              src_stride;
     logic [$clog2(MAX_SRC_W+1)-1:0] src_w;
     logic [$clog2(MAX_SRC_H+1)-1:0] src_h;
+    logic [$clog2(MAX_DST_W+1)-1:0] dst_w;
+    logic [$clog2(MAX_DST_H+1)-1:0] dst_h;
     logic                           busy;
     logic                           error;
 
     logic              read_start;
     logic [ADDR_W-1:0] read_addr;
+    logic [31:0]       read_row_stride;
     logic [31:0]       read_byte_count;
+    logic [15:0]       read_row_count;
+    logic              read_start_ready;
     logic              read_busy;
     logic              read_done;
     logic              read_error;
     logic [PIXEL_W-1:0] in_data;
     logic               in_valid;
+    logic               in_row_last;
     logic               in_ready;
 
     logic                                              sample_req_valid;
@@ -47,13 +57,21 @@ module tb_src_tile_cache;
     logic [31:0]                                       stat_misses;
     logic [31:0]                                       stat_prefetch_starts;
     logic [31:0]                                       stat_prefetch_hits;
+    logic signed [COORD_W-1:0]                         geom_src_x_max_q16;
+    logic signed [COORD_W-1:0]                         geom_src_y_max_q16;
+
+    assign geom_src_x_max_q16 = (src_w == '0) ? '0 : (($signed(COORD_W'({1'b0, src_w})) - 1) <<< 16);
+    assign geom_src_y_max_q16 = (src_h == '0) ? '0 : (($signed(COORD_W'({1'b0, src_h})) - 1) <<< 16);
 
     byte src_mem [0:MEM_BYTES-1];
 
     logic [ADDR_W-1:0] rd_addr_reg;
+    logic [31:0]       rd_row_stride_reg;
+    logic [31:0]       rd_row_width_reg;
     int                rd_remaining_reg;
     int                rd_index_reg;
     int                read_start_count;
+    logic              inject_read_error_once;
 
     initial clk = 1'b0;
     always #5 clk = ~clk;
@@ -63,6 +81,9 @@ module tb_src_tile_cache;
         .ADDR_W(ADDR_W),
         .MAX_SRC_W(MAX_SRC_W),
         .MAX_SRC_H(MAX_SRC_H),
+        .MAX_DST_W(MAX_DST_W),
+        .MAX_DST_H(MAX_DST_H),
+        .COORD_W(COORD_W),
         .TILE_W(TILE_W),
         .TILE_H(TILE_H),
         .TILE_NUM(TILE_NUM)
@@ -74,17 +95,47 @@ module tb_src_tile_cache;
         .src_stride(src_stride),
         .src_w(src_w),
         .src_h(src_h),
+        .dst_w(dst_w),
+        .dst_h(dst_h),
+        .rot_sin_q16(32'sd0),
+        .rot_cos_q16(32'sh0001_0000),
+        .geom_ready(1'b1),
+        .geom_error(1'b0),
+        .geom_step_x_x(GEOM_ONE_Q16),
+        .geom_step_y_x('0),
+        .geom_step_x_y('0),
+        .geom_step_y_y(GEOM_ONE_Q16),
+        .geom_row0_x('0),
+        .geom_row0_y('0),
+        .geom_src_x_last((src_w == '0) ? '0 : src_w[$clog2(MAX_SRC_W)-1:0] - 1'b1),
+        .geom_src_y_last((src_h == '0) ? '0 : src_h[$clog2(MAX_SRC_H)-1:0] - 1'b1),
+        .geom_src_x_max_q16(geom_src_x_max_q16),
+        .geom_src_y_max_q16(geom_src_y_max_q16),
         .prefetch_enable(1'b0),
+        .runtime_lead_pixels(16'd64),
+        .runtime_merge_max_x_eff(8'd8),
+        .runtime_merge_min_x(8'd1),
+        .runtime_fifo_depth_eff(16'd32),
+        .runtime_fifo_age_limit(16'd0),
+        .runtime_prefetch_throttle_cycles(16'd0),
+        .runtime_scheduler_policy(2'd0),
+        .scan_dir_x(2'sd0),
+        .scan_dir_y(2'sd0),
+        .scan_dir_valid(1'b0),
         .busy(busy),
         .error(error),
         .read_start(read_start),
         .read_addr(read_addr),
+        .read_row_stride(read_row_stride),
         .read_byte_count(read_byte_count),
+        .read_row_count(read_row_count),
+        .read_start_ready(read_start_ready),
         .read_busy(read_busy),
         .read_done(read_done),
         .read_error(read_error),
         .in_data(in_data),
         .in_valid(in_valid),
+        .in_row_last(in_row_last),
         .in_ready(in_ready),
         .sample_req_valid(sample_req_valid),
         .sample_x0(sample_x0),
@@ -127,6 +178,8 @@ module tb_src_tile_cache;
             src_stride        = 32'd20;
             src_w             = 20;
             src_h             = 20;
+            dst_w             = 20;
+            dst_h             = 20;
             sample_req_valid  = 1'b0;
             sample_x0         = '0;
             sample_y0         = '0;
@@ -137,9 +190,12 @@ module tb_src_tile_cache;
             read_error        = 1'b0;
             in_valid          = 1'b0;
             rd_addr_reg       = '0;
+            rd_row_stride_reg = '0;
+            rd_row_width_reg  = '0;
             rd_remaining_reg  = 0;
             rd_index_reg      = 0;
             read_start_count  = 0;
+            inject_read_error_once = 1'b0;
             init_memory();
             repeat (5) @(posedge clk);
             sys_rst = 1'b0;
@@ -203,16 +259,23 @@ module tb_src_tile_cache;
             read_error       <= 1'b0;
             in_valid         <= 1'b0;
             rd_addr_reg      <= '0;
+            rd_row_stride_reg <= '0;
+            rd_row_width_reg <= '0;
             rd_remaining_reg <= 0;
             rd_index_reg     <= 0;
         end else begin
             read_done  <= 1'b0;
             read_error <= 1'b0;
 
-            if (!read_busy && read_start) begin
+            if (!read_busy && read_start && inject_read_error_once) begin
+                read_error <= 1'b1;
+                read_start_count <= read_start_count + 1;
+            end else if (!read_busy && read_start) begin
                 read_busy        <= 1'b1;
                 rd_addr_reg      <= read_addr;
-                rd_remaining_reg <= read_byte_count;
+                rd_row_stride_reg <= read_row_stride;
+                rd_row_width_reg <= read_byte_count;
+                rd_remaining_reg <= read_byte_count * read_row_count;
                 rd_index_reg     <= 0;
                 read_start_count <= read_start_count + 1;
             end
@@ -236,51 +299,76 @@ module tb_src_tile_cache;
 
     always_comb begin
         if (read_busy && (rd_remaining_reg > 0)) begin
-            in_data = src_mem[rd_addr_reg + rd_index_reg];
+            in_data = src_mem[rd_addr_reg +
+                              ((rd_index_reg / rd_row_width_reg) * rd_row_stride_reg) +
+                              (rd_index_reg % rd_row_width_reg)];
         end else begin
             in_data = '0;
         end
     end
 
+    assign in_row_last = read_busy && (rd_remaining_reg > 0) &&
+                         (rd_row_width_reg != 0) &&
+                         (((rd_index_reg % rd_row_width_reg) + 1) == rd_row_width_reg);
+    assign read_start_ready = !read_busy;
+
     initial begin
         reset_dut();
 
         expect_sample(2, 3, 3, 4);
-        if (read_start_count != 16) begin
-            $fatal(1, "First tile fill should issue 16 row reads, got %0d", read_start_count);
+        if (read_start_count != 1) begin
+            $fatal(1, "First tile fill should issue one 2D read task, got %0d", read_start_count);
         end
 
         expect_sample(10, 10, 11, 11);
-        if (read_start_count != 16) begin
-            $fatal(1, "Cache hit should not add row reads, got %0d", read_start_count);
+        if (read_start_count != 2) begin
+            $fatal(1, "8x8 sector (1,1) should add one read task, got %0d", read_start_count);
         end
 
         expect_sample(15, 6, 16, 7);
-        if (read_start_count != 32) begin
-            $fatal(1, "Crossing into second horizontal tile should add 16 row reads, got %0d", read_start_count);
+        if (read_start_count != 4) begin
+            $fatal(1, "Crossing two horizontal 8x8 sectors should add two read tasks, got %0d", read_start_count);
         end
 
         expect_sample(3, 15, 4, 16);
-        if (read_start_count != 36) begin
-            $fatal(1, "Vertical cross should only add the 4-row bottom-edge tile when protected-slot replacement works, got %0d", read_start_count);
+        if (read_start_count != 6) begin
+            $fatal(1, "Vertical 8x8 sector cross should add two read tasks, got %0d", read_start_count);
         end
 
         expect_sample(1, 1, 2, 2);
-        if (read_start_count != 36) begin
-            $fatal(1, "Top-left tile should already be resident after vertical cross recovery, got %0d", read_start_count);
+        if (read_start_count != 6) begin
+            $fatal(1, "Top-left 8x8 sector should already be resident, got %0d", read_start_count);
         end
 
         expect_sample(17, 6, 18, 7);
-        if (read_start_count != 52) begin
-            $fatal(1, "Revisiting the displaced horizontal tile should add 16 row reads, got %0d", read_start_count);
+        if (read_start_count != 6) begin
+            $fatal(1, "Previously loaded 8x8 sector should stay resident, got %0d", read_start_count);
         end
 
         if (error) begin
             $fatal(1, "src_tile_cache error flag should remain low");
         end
 
-        $display("tb_src_tile_cache completed");
-        $finish;
+        reset_dut();
+        inject_read_error_once <= 1'b1;
+        @(posedge clk);
+        sample_x0        <= 6;
+        sample_y0        <= 6;
+        sample_x1        <= 7;
+        sample_y1        <= 7;
+        sample_req_valid <= 1'b1;
+        repeat (40) begin
+            @(posedge clk);
+            if (error) begin
+                sample_req_valid <= 1'b0;
+                inject_read_error_once <= 1'b0;
+                $display("tb_src_tile_cache read_error injection observed");
+                $display("tb_src_tile_cache completed");
+                $finish;
+            end
+        end
+        $fatal(1, "src_tile_cache did not raise error after injected read_error");
+
     end
 
 endmodule

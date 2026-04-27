@@ -6,6 +6,8 @@ param(
     [switch]$Wave,
     [switch]$GtkWave,
     [switch]$Clean,
+    [int]$CompileTimeoutSec = 60,
+    [int]$ElabTimeoutSec = 60,
     [int]$SimTimeoutSec = 20,
     [switch]$CompileOnly,
     [switch]$ElabOnly
@@ -49,6 +51,7 @@ $targets = @{
         Top = "tb_task_cdc"
         Snapshot = "tb_task_cdc_auto"
         Sources = @(
+            "rtl/buffer/async_word_fifo.sv",
             "rtl/axi/task_cdc.sv",
             "rtl/sim/tb_task_cdc.sv"
         )
@@ -57,8 +60,18 @@ $targets = @{
         Top = "tb_result_cdc"
         Snapshot = "tb_result_cdc_auto"
         Sources = @(
+            "rtl/buffer/async_word_fifo.sv",
             "rtl/axi/result_cdc.sv",
             "rtl/sim/tb_result_cdc.sv"
+        )
+    }
+    "cache_stats_cdc" = @{
+        Top = "tb_cache_stats_cdc_back_to_back"
+        Snapshot = "tb_cache_stats_cdc_back_to_back_auto"
+        Sources = @(
+            "rtl/buffer/async_word_fifo.sv",
+            "rtl/axi/cache_stats_cdc.sv",
+            "rtl/sim/tb_cache_stats_cdc_back_to_back.sv"
         )
     }
     "async_word_fifo" = @{
@@ -81,14 +94,78 @@ $targets = @{
         Top = "tb_src_tile_cache"
         Snapshot = "tb_src_tile_cache_auto"
         Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
             "rtl/buffer/src_tile_cache.sv",
             "rtl/sim/tb_src_tile_cache.sv"
+        )
+    }
+    "rotate_geom_init_unit" = @{
+        Top = "tb_rotate_geom_init_unit"
+        Snapshot = "tb_rotate_geom_init_unit_auto"
+        Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
+            "rtl/sim/tb_rotate_geom_init_unit.sv"
         )
     }
     "src_tile_cache_prefetch" = @{
         Top = "tb_src_tile_cache_prefetch"
         Snapshot = "tb_src_tile_cache_prefetch_auto"
         Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/sim/tb_src_tile_cache_prefetch.sv"
+        )
+    }
+    "src_tile_cache_analytic_trace" = @{
+        Top = "tb_src_tile_cache_analytic_trace"
+        Snapshot = "tb_src_tile_cache_analytic_trace_auto"
+        Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/sim/tb_src_tile_cache_analytic_trace.sv"
+        )
+    }
+    "src_tile_cache_merge_reservation" = @{
+        Top = "tb_src_tile_cache_merge_reservation"
+        Snapshot = "tb_src_tile_cache_merge_reservation_auto"
+        Defines = @(
+            "SRC_TILE_CACHE_SECTOR_SET_NUM=2",
+            "SRC_TILE_CACHE_SECTOR_WAY_NUM=4",
+            "SRC_TILE_CACHE_MERGE_MAX_X=8",
+            "SRC_TILE_CACHE_ANALYTIC_FIFO_DEPTH=16",
+            "SRC_TILE_CACHE_ANALYTIC_LEAD_PIXELS=64"
+        )
+        Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/sim/tb_src_tile_cache_merge_reservation.sv"
+        )
+    }
+    "src_tile_cache_prefetch_merge_min" = @{
+        Top = "tb_src_tile_cache_prefetch"
+        Snapshot = "tb_src_tile_cache_prefetch_merge_min_auto"
+        Defines = @(
+            "SRC_TILE_CACHE_ENABLE_MERGE_MIN=1",
+            "SRC_TILE_CACHE_MERGE_MIN_X=4",
+            "SRC_TILE_CACHE_FIFO_AGE_LIMIT=20",
+            "SRC_TILE_CACHE_MERGE_MAX_X=8",
+            "SRC_TILE_CACHE_ANALYTIC_FIFO_DEPTH=32"
+        )
+        Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
+            "rtl/buffer/src_tile_cache.sv",
+            "rtl/sim/tb_src_tile_cache_prefetch.sv"
+        )
+    }
+    "src_tile_cache_prefetch_throttle" = @{
+        Top = "tb_src_tile_cache_prefetch"
+        Snapshot = "tb_src_tile_cache_prefetch_throttle_auto"
+        Defines = @(
+            "SRC_TILE_CACHE_ENABLE_PREFETCH_THROTTLE=1",
+            "SRC_TILE_CACHE_PREFETCH_THROTTLE_CYCLES=32"
+        )
+        Sources = @(
+            "rtl/core/rotate_geom_init_unit.sv",
             "rtl/buffer/src_tile_cache.sv",
             "rtl/sim/tb_src_tile_cache_prefetch.sv"
         )
@@ -101,17 +178,27 @@ $targets = @{
             "rtl/sim/tb_scaler_ctrl.sv"
         )
     }
+    "rotate_core_bilinear_trace" = @{
+        Top = "tb_rotate_core_bilinear_trace"
+        Snapshot = "tb_rotate_core_bilinear_trace_auto"
+        Sources = @(
+            "rtl/core/row_advance_unit.sv",
+            "rtl/core/rotate_core_bilinear.sv",
+            "rtl/sim/tb_rotate_core_bilinear_trace.sv"
+        )
+    }
     "ddr_read_engine" = @{
         Top = "tb_ddr_read_engine"
         Snapshot = "tb_ddr_read_engine_auto"
         Sources = @(
             "axi/rtl/taxi_axi_if.sv",
             "rtl/axi/ddr_axi_pkg.sv",
-            "rtl/axi/task_cdc.sv",
+            "rtl/axi/task_cdc_2d.sv",
             "rtl/axi/result_cdc.sv",
-            "rtl/axi/axi_burst_reader.sv",
-            "rtl/buffer/async_word_fifo.sv",
-            "rtl/core/pixel_unpacker.sv",
+    "rtl/axi/axi_burst_reader.sv",
+    "rtl/buffer/async_word_fifo.sv",
+    "rtl/core/pixel_packer.sv",
+    "rtl/core/pixel_unpacker.sv",
             "rtl/axi/ddr_read_engine.sv",
             "rtl/sim/tb_ddr_read_engine.sv"
         )
@@ -122,7 +209,9 @@ $targets = @{
         Sources = @(
             "axi/rtl/taxi_axi_if.sv",
             "rtl/axi/ddr_axi_pkg.sv",
+            "rtl/axi/reset_sync.sv",
             "rtl/axi/task_cdc.sv",
+            "rtl/axi/task_cdc_2d.sv",
             "rtl/axi/result_cdc.sv",
             "rtl/buffer/async_word_fifo.sv",
             "rtl/core/pixel_packer.sv",
@@ -137,13 +226,17 @@ $targets = @{
         Sources = @(
             "axi/rtl/taxi_axi_if.sv",
             "rtl/axi/ddr_axi_pkg.sv",
+            "rtl/axi/reset_sync.sv",
             "rtl/axi/task_cdc.sv",
+            "rtl/axi/task_cdc_2d.sv",
             "rtl/axi/result_cdc.sv",
             "rtl/axi/frame_config_cdc.sv",
             "rtl/axi/cache_stats_cdc.sv",
             "rtl/axi/axi_burst_reader.sv",
             "rtl/buffer/async_word_fifo.sv",
+            "rtl/core/pixel_packer.sv",
             "rtl/core/pixel_unpacker.sv",
+            "rtl/core/rotate_geom_init_unit.sv",
             "rtl/axi/ddr_read_engine.sv",
             "rtl/axi/ddr_write_engine.sv",
             "rtl/buffer/src_tile_cache.sv",
@@ -161,13 +254,17 @@ $targets = @{
         Sources = @(
             "axi/rtl/taxi_axi_if.sv",
             "rtl/axi/ddr_axi_pkg.sv",
+            "rtl/axi/reset_sync.sv",
             "rtl/axi/task_cdc.sv",
+            "rtl/axi/task_cdc_2d.sv",
             "rtl/axi/result_cdc.sv",
             "rtl/axi/frame_config_cdc.sv",
             "rtl/axi/cache_stats_cdc.sv",
             "rtl/axi/axi_burst_reader.sv",
             "rtl/buffer/async_word_fifo.sv",
+            "rtl/core/pixel_packer.sv",
             "rtl/core/pixel_unpacker.sv",
+            "rtl/core/rotate_geom_init_unit.sv",
             "rtl/axi/ddr_read_engine.sv",
             "rtl/axi/ddr_write_engine.sv",
             "rtl/buffer/src_tile_cache.sv",
@@ -186,12 +283,15 @@ $targets = @{
             "axi/rtl/taxi_axi_if.sv",
             "rtl/axi/ddr_axi_pkg.sv",
             "rtl/axi/task_cdc.sv",
+            "rtl/axi/task_cdc_2d.sv",
             "rtl/axi/result_cdc.sv",
             "rtl/axi/frame_config_cdc.sv",
             "rtl/axi/cache_stats_cdc.sv",
             "rtl/axi/axi_burst_reader.sv",
             "rtl/buffer/async_word_fifo.sv",
+            "rtl/core/pixel_packer.sv",
             "rtl/core/pixel_unpacker.sv",
+            "rtl/core/rotate_geom_init_unit.sv",
             "rtl/axi/ddr_read_engine.sv",
             "rtl/axi/ddr_write_engine.sv",
             "rtl/buffer/src_tile_cache.sv",
@@ -205,17 +305,66 @@ $targets = @{
     }
 }
 
+function ConvertTo-ProcessArgumentString {
+    param([string[]]$Arguments)
+
+    $items = @()
+    foreach ($arg in $Arguments) {
+        if ($arg -match '[\s"]') {
+            $escaped = $arg -replace '"', '\"'
+            $items += '"' + $escaped + '"'
+        } else {
+            $items += $arg
+        }
+    }
+    return ($items -join ' ')
+}
+
 function Invoke-Step {
     param(
         [string]$FilePath,
         [string[]]$Arguments,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [int]$TimeoutSec = 60,
+        [string]$LogPath = ""
     )
 
-    # 统一执行外部工具，失败时立刻抛错终止流程。
+    # 统一执行外部工具，失败/超时时立刻抛错终止流程。
     Write-Host ">> $FilePath $($Arguments -join ' ')"
-    & $FilePath @Arguments | Out-Host
-    if ($LASTEXITCODE -ne 0) {
+    $resolvedPath = (Get-Command $FilePath -ErrorAction Stop).Source
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $resolvedPath
+    $psi.Arguments = ConvertTo-ProcessArgumentString -Arguments $Arguments
+    $psi.WorkingDirectory = $WorkingDirectory
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
+    $done = $false
+
+    for ($i = 0; $i -lt $TimeoutSec; $i++) {
+        $proc.Refresh()
+        if ($proc.HasExited) {
+            $done = $true
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+
+    if (-not $done) {
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        Stop-XsimProcesses
+        if ($LogPath -and (Test-Path $LogPath)) {
+            Get-Content $LogPath -Tail 80 | Out-Host
+        }
+        throw "Command timed out after ${TimeoutSec}s: $FilePath $($Arguments -join ' ')"
+    }
+
+    if ($proc.ExitCode -ne 0) {
+        if ($LogPath -and (Test-Path $LogPath)) {
+            Get-Content $LogPath -Tail 80 | Out-Host
+        }
         throw "Command failed: $FilePath $($Arguments -join ' ')"
     }
 }
@@ -239,7 +388,16 @@ function Invoke-XsimWithTimeout {
 
     # xsim 单独做超时控制，防止 GUI/仿真卡住后一直不退出。
     Write-Host ">> xsim $($Arguments -join ' ')"
-    $proc = Start-Process xsim -ArgumentList $Arguments -PassThru -WorkingDirectory $repoRoot
+    $resolvedPath = (Get-Command "xsim" -ErrorAction Stop).Source
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $resolvedPath
+    $psi.Arguments = ConvertTo-ProcessArgumentString -Arguments $Arguments
+    $psi.WorkingDirectory = $repoRoot
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
     Start-Sleep -Seconds 1
     $done = $false
 
@@ -268,7 +426,7 @@ function Resolve-TargetNames {
 
     if ($Name -eq "all") {
         # all 会展开成脚本当前维护的全部目标。
-        return @("scale_core_nearest", "pixel_unpacker", "task_cdc", "result_cdc", "async_word_fifo", "src_line_buffer", "src_tile_cache", "src_tile_cache_prefetch", "scaler_ctrl", "ddr_read_engine", "ddr_write_engine", "image_geo_top", "image_geo_top_prefetch_stress", "image_geo_top_perf_sweep")
+        return @("scale_core_nearest", "pixel_unpacker", "task_cdc", "result_cdc", "cache_stats_cdc", "async_word_fifo", "src_line_buffer", "rotate_geom_init_unit", "rotate_core_bilinear_trace", "src_tile_cache", "src_tile_cache_prefetch", "src_tile_cache_analytic_trace", "src_tile_cache_merge_reservation", "src_tile_cache_prefetch_merge_min", "src_tile_cache_prefetch_throttle", "scaler_ctrl", "ddr_read_engine", "ddr_write_engine", "image_geo_top", "image_geo_top_prefetch_stress", "image_geo_top_perf_sweep")
     }
 
     if (-not $targets.ContainsKey($Name)) {
@@ -298,13 +456,28 @@ function Run-OneTarget {
     $wdbPath = Join-Path $targetOutDir "$($Cfg.Top).wdb"
     $vcdPath = Join-Path $targetOutDir "$($Cfg.Top).vcd"
 
-    # xvlog 统一按 SystemVerilog 模式编译。
+    # xvlog 统一按 SystemVerilog 模式编译。Vivado 2019.2 对 `-d NAME=VALUE`
+    # 兼容性不好，带参数 target 用临时 define 文件更稳。
     $sourceArgs = @("-sv")
+    if ($Cfg.ContainsKey("Defines")) {
+        $defineFile = Join-Path $targetOutDir "module_defines.sv"
+        $defineLines = @()
+        foreach ($define in $Cfg.Defines) {
+            $parts = $define -split "=", 2
+            if ($parts.Count -eq 2) {
+                $defineLines += "``define $($parts[0]) $($parts[1])"
+            } else {
+                $defineLines += "``define $define"
+            }
+        }
+        Set-Content -Path $defineFile -Value $defineLines -Encoding ASCII
+        $sourceArgs += $defineFile
+    }
     foreach ($src in $Cfg.Sources) {
         $sourceArgs += (Join-Path $repoRoot $src)
     }
     $sourceArgs += @("--log", $compileLog)
-    Invoke-Step -FilePath "xvlog" -Arguments $sourceArgs -WorkingDirectory $repoRoot
+    Invoke-Step -FilePath "xvlog" -Arguments $sourceArgs -WorkingDirectory $repoRoot -TimeoutSec $CompileTimeoutSec -LogPath $compileLog
     if ($CompileOnly) {
         return [pscustomobject]@{
             Target = $Name
@@ -322,7 +495,7 @@ function Run-OneTarget {
     if ($Wave -or $GtkWave) {
         $elabArgs += @("--debug", "wave")
     }
-    Invoke-Step -FilePath "xelab" -Arguments $elabArgs -WorkingDirectory $repoRoot
+    Invoke-Step -FilePath "xelab" -Arguments $elabArgs -WorkingDirectory $repoRoot -TimeoutSec $ElabTimeoutSec -LogPath $elabLog
     if ($ElabOnly) {
         return [pscustomobject]@{
             Target = $Name

@@ -18,6 +18,18 @@ module rotate_core_bilinear #(
     input  logic [$clog2(MAX_DST_H+1)-1:0] dst_h,
     input  logic signed [31:0] angle_cos_q16,
     input  logic signed [31:0] angle_sin_q16,
+    input  logic geom_ready,
+    input  logic geom_error,
+    input  logic signed [COORD_W-1:0] geom_step_x_x,
+    input  logic signed [COORD_W-1:0] geom_step_y_x,
+    input  logic signed [COORD_W-1:0] geom_step_x_y,
+    input  logic signed [COORD_W-1:0] geom_step_y_y,
+    input  logic signed [COORD_W-1:0] geom_row0_x,
+    input  logic signed [COORD_W-1:0] geom_row0_y,
+    input  logic [(MAX_SRC_W > 1 ? $clog2(MAX_SRC_W) : 1)-1:0] geom_src_x_last,
+    input  logic [(MAX_SRC_H > 1 ? $clog2(MAX_SRC_H) : 1)-1:0] geom_src_y_last,
+    input  logic signed [COORD_W-1:0] geom_src_x_max_q16,
+    input  logic signed [COORD_W-1:0] geom_src_y_max_q16,
     output logic busy,
     output logic done,
     output logic error,
@@ -46,31 +58,12 @@ module rotate_core_bilinear #(
 
     localparam int SRC_X_W = (MAX_SRC_W > 1) ? $clog2(MAX_SRC_W) : 1;
     localparam int SRC_Y_W = (MAX_SRC_H > 1) ? $clog2(MAX_SRC_H) : 1;
-    localparam int SRC_CFG_W = $clog2(MAX_SRC_W+1);
-    localparam int SRC_CFG_H = $clog2(MAX_SRC_H+1);
     localparam int DST_X_W = $clog2(MAX_DST_W+1);
     localparam int DST_Y_W = $clog2(MAX_DST_H+1);
     localparam int MIX_W      = PIXEL_W + FRAC_W + 2;
-    localparam int INIT_MUL_W = 64;
     typedef enum logic [5:0] {
         S_IDLE,
-        S_DIV_X_INIT,
-        S_DIV_X_RUN,
-        S_DIV_Y_INIT,
-        S_DIV_Y_RUN,
-        S_CENTER,
-        S_STEP_XX,
-        S_STEP_YX_MUL,
-        S_STEP_YX,
-        S_STEP_XY,
-        S_STEP_YY,
-        S_ROW0_X_PREP,
-        S_ROW0_X_MUL,
-        S_ROW0_X_SUM,
-        S_ROW0_X_COMMIT,
-        S_ROW0_Y_MUL,
-        S_ROW0_Y_SUM,
-        S_ROW0_Y_COMMIT,
+        S_GEOM_WAIT,
         S_PRECALC_INIT,
         S_PRECALC_RUN,
         S_PRECALC_WAIT,
@@ -106,26 +99,8 @@ module rotate_core_bilinear #(
     logic signed [COORD_W-1:0] step_y_x_reg;
     logic signed [COORD_W-1:0] step_x_y_reg;
     logic signed [COORD_W-1:0] step_y_y_reg;
-    logic signed [31:0]        scale_x_q16_reg;
-    logic signed [31:0]        scale_y_q16_reg;
     logic [DST_X_W-1:0]        cfg_dst_w_reg;
     logic [DST_Y_W-1:0]        cfg_dst_h_reg;
-    logic [SRC_CFG_W-1:0]      cfg_src_w_reg;
-    logic [SRC_CFG_H-1:0]      cfg_src_h_reg;
-    logic signed [31:0]        cfg_angle_cos_q16_reg;
-    logic signed [31:0]        cfg_angle_sin_q16_reg;
-    logic signed [COORD_W-1:0] src_cx_q16_reg;
-    logic signed [COORD_W-1:0] src_cy_q16_reg;
-    logic signed [COORD_W-1:0] dst_cx_q16_reg;
-    logic signed [COORD_W-1:0] dst_cy_q16_reg;
-    logic signed [COORD_W-1:0] row0_src_cx_hold_reg;
-    logic signed [COORD_W-1:0] row0_src_cy_hold_reg;
-    logic signed [COORD_W-1:0] row0_dst_cx_hold_reg;
-    logic signed [COORD_W-1:0] row0_dst_cy_hold_reg;
-    logic signed [COORD_W-1:0] row0_step_x_x_hold_reg;
-    logic signed [COORD_W-1:0] row0_step_y_x_hold_reg;
-    logic signed [COORD_W-1:0] row0_step_x_y_hold_reg;
-    logic signed [COORD_W-1:0] row0_step_y_y_hold_reg;
     logic signed [COORD_W-1:0] cfg_src_x_max_q16_reg;
     logic signed [COORD_W-1:0] cfg_src_y_max_q16_reg;
     logic [SRC_X_W-1:0]        cfg_src_x_last_reg;
@@ -166,16 +141,6 @@ module rotate_core_bilinear #(
     logic [PIXEL_W-1:0] pix_data_reg;
     logic               pix_valid_reg;
 
-    logic [31:0]               div_dividend_reg;
-    logic [31:0]               div_divisor_reg;
-    logic [31:0]               div_quotient_reg;
-    logic [32:0]               div_remainder_reg;
-    logic [5:0]                div_count_reg;
-    logic [32:0]               div_remainder_shift_calc;
-    logic [32:0]               div_remainder_next_calc;
-    logic [31:0]               div_dividend_next_calc;
-    logic [31:0]               div_quotient_next_calc;
-
     logic signed [COORD_W-1:0] next_x_calc;
     logic signed [COORD_W-1:0] next_y_calc;
     logic signed [COORD_W-1:0] clamped_x_q16_calc;
@@ -193,33 +158,9 @@ module rotate_core_bilinear #(
     logic [MIX_W-1:0]          top_mix_calc;
     logic [MIX_W-1:0]          bot_mix_calc;
     logic [MIX_W-1:0]          out_mix_calc;
-    logic signed [INIT_MUL_W-1:0] row0_x_mul0_reg;
-    logic signed [INIT_MUL_W-1:0] row0_x_mul1_reg;
-    logic signed [COORD_W-1:0] row0_x_dst_cx_mul_reg;
-    logic signed [COORD_W-1:0] row0_x_dst_cy_mul_reg;
-    logic signed [COORD_W-1:0] row0_x_step_x_x_mul_reg;
-    logic signed [COORD_W-1:0] row0_x_step_x_y_mul_reg;
-    logic signed [INIT_MUL_W-1:0] row0_y_mul0_reg;
-    logic signed [INIT_MUL_W-1:0] row0_y_mul1_reg;
-    logic signed [INIT_MUL_W-1:0] row0_x_base_wide_reg;
-    logic signed [INIT_MUL_W-1:0] row0_y_base_wide_reg;
-    logic signed [INIT_MUL_W-1:0] step_y_x_mul_reg;
-
     logic last_col;
     logic last_row;
     logic pix_fire;
-
-    always_comb begin
-        div_remainder_shift_calc = {div_remainder_reg[31:0], div_dividend_reg[31]};
-        div_dividend_next_calc   = {div_dividend_reg[30:0], 1'b0};
-        if (div_remainder_shift_calc >= {1'b0, div_divisor_reg}) begin
-            div_remainder_next_calc = div_remainder_shift_calc - {1'b0, div_divisor_reg};
-            div_quotient_next_calc  = {div_quotient_reg[30:0], 1'b1};
-        end else begin
-            div_remainder_next_calc = div_remainder_shift_calc;
-            div_quotient_next_calc  = {div_quotient_reg[30:0], 1'b0};
-        end
-    end
 
     always_comb begin
         next_x_calc          = cur_x_reg + step_x_x_reg;
@@ -295,8 +236,7 @@ module rotate_core_bilinear #(
     assign pix_fire       = pix_valid_reg && pix_ready;
     assign scan_dir_x     = (step_x_x_reg > 0) ? 2'sd1 : ((step_x_x_reg < 0) ? -2'sd1 : 2'sd0);
     assign scan_dir_y     = (step_y_x_reg > 0) ? 2'sd1 : ((step_y_x_reg < 0) ? -2'sd1 : 2'sd0);
-    assign scan_dir_valid = busy && (((step_x_x_reg == 0) && (step_y_x_reg != 0)) ||
-                                     ((step_x_x_reg != 0) && (step_y_x_reg == 0)));
+    assign scan_dir_valid = busy && ((step_x_x_reg != 0) || (step_y_x_reg != 0));
 
     always_comb begin
         row_base_wr_en   = 1'b0;
@@ -389,22 +329,6 @@ module rotate_core_bilinear #(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            row0_x_base_reg <= '0;
-        end else if (state_reg == S_ROW0_X_COMMIT) begin
-            row0_x_base_reg <= row0_x_base_wide_reg[COORD_W-1:0];
-        end
-    end
-
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            row0_y_base_reg <= '0;
-        end else if (state_reg == S_ROW0_Y_COMMIT) begin
-            row0_y_base_reg <= row0_y_base_wide_reg[COORD_W-1:0];
-        end
-    end
-
-    always_ff @(posedge clk) begin
-        if (rst) begin
             cur_x_reg <= '0;
         end else begin
             if (state_reg == S_LOAD2) begin
@@ -436,26 +360,10 @@ module rotate_core_bilinear #(
             step_y_x_reg   <= '0;
             step_x_y_reg   <= '0;
             step_y_y_reg   <= '0;
-            scale_x_q16_reg <= '0;
-            scale_y_q16_reg <= '0;
             cfg_dst_w_reg   <= '0;
             cfg_dst_h_reg   <= '0;
-            cfg_src_w_reg   <= '0;
-            cfg_src_h_reg   <= '0;
-            cfg_angle_cos_q16_reg <= '0;
-            cfg_angle_sin_q16_reg <= '0;
-            src_cx_q16_reg <= '0;
-            src_cy_q16_reg <= '0;
-            dst_cx_q16_reg <= '0;
-            dst_cy_q16_reg <= '0;
-            row0_src_cx_hold_reg <= '0;
-            row0_src_cy_hold_reg <= '0;
-            row0_dst_cx_hold_reg <= '0;
-            row0_dst_cy_hold_reg <= '0;
-            row0_step_x_x_hold_reg <= '0;
-            row0_step_y_x_hold_reg <= '0;
-            row0_step_x_y_hold_reg <= '0;
-            row0_step_y_y_hold_reg <= '0;
+            row0_x_base_reg <= '0;
+            row0_y_base_reg <= '0;
             cfg_src_x_max_q16_reg <= '0;
             cfg_src_y_max_q16_reg <= '0;
             cfg_src_x_last_reg <= '0;
@@ -492,22 +400,6 @@ module rotate_core_bilinear #(
             out_mix_reg    <= '0;
             pix_data_reg   <= '0;
             pix_valid_reg  <= 1'b0;
-            div_dividend_reg <= '0;
-            div_divisor_reg  <= '0;
-            div_quotient_reg <= '0;
-            div_remainder_reg <= '0;
-            div_count_reg     <= '0;
-            row0_x_mul0_reg <= '0;
-            row0_x_mul1_reg <= '0;
-            row0_x_dst_cx_mul_reg <= '0;
-            row0_x_dst_cy_mul_reg <= '0;
-            row0_x_step_x_x_mul_reg <= '0;
-            row0_x_step_x_y_mul_reg <= '0;
-            row0_y_mul0_reg <= '0;
-            row0_y_mul1_reg <= '0;
-            row0_x_base_wide_reg <= '0;
-            row0_y_base_wide_reg <= '0;
-            step_y_x_mul_reg <= '0;
             done           <= 1'b0;
             error          <= 1'b0;
             row_done       <= 1'b0;
@@ -518,169 +410,37 @@ module rotate_core_bilinear #(
             case (state_reg)
                 S_IDLE: begin
                     pix_valid_reg <= 1'b0;
-                    error         <= 1'b0;  
-                    // 开始 并进行初始化
+                    error <= 1'b0;
                     if (start) begin
-                        if ((src_w == 0) || (src_h == 0) || (dst_w == 0) || (dst_h == 0)) begin
-                            error    <= 1'b1;
-                            state_reg <= S_IDLE;
-                        end else begin
-                            dst_x_reg      <= '0;
-                            dst_y_reg      <= '0;
-                            cfg_src_w_reg  <= src_w;
-                            cfg_src_h_reg  <= src_h;
-                            cfg_dst_w_reg  <= dst_w;
-                            cfg_dst_h_reg  <= dst_h;
-                            cfg_angle_cos_q16_reg <= angle_cos_q16;
-                            cfg_angle_sin_q16_reg <= angle_sin_q16;
-                            cfg_src_x_last_reg <= src_w[SRC_X_W-1:0] - 1'b1;
-                            cfg_src_y_last_reg <= src_h[SRC_Y_W-1:0] - 1'b1;
-                            cfg_src_x_max_q16_reg <= ($signed({1'b0, src_w}) - 1) <<< FRAC_W; // 这里将最大坐标转换为Q16格式，乘以2^FRAC_W
-                            cfg_src_y_max_q16_reg <= ($signed({1'b0, src_h}) - 1) <<< FRAC_W;
-                            state_reg      <= S_DIV_X_INIT;
-                        end
+                        dst_x_reg <= '0;
+                        dst_y_reg <= '0;
+                        cfg_dst_w_reg <= dst_w;
+                        cfg_dst_h_reg <= dst_h;
+                        state_reg <= S_GEOM_WAIT;
                     end
                 end
 
-                // 计算缩放因子除法初始化
-                S_DIV_X_INIT: begin
-                    div_dividend_reg  <= 32'sh0001_0000 * $signed({1'b0, cfg_src_w_reg}); // 这里将被除数设置为src_w的Q16格式，即src_w乘以2^FRAC_W
-                    div_divisor_reg   <= {16'd0, cfg_dst_w_reg}; // 这里将除数设置为dst_w的整数格式，低16位为0
-                    div_quotient_reg  <= '0;
-                    div_remainder_reg <= '0;
-                    div_count_reg     <= 6'd32;
-                    state_reg         <= S_DIV_X_RUN;
-                end
-
-                // 计算缩放因子
-                S_DIV_X_RUN: begin
-                    div_dividend_reg  <= div_dividend_next_calc;
-                    div_quotient_reg  <= div_quotient_next_calc;
-                    div_remainder_reg <= div_remainder_next_calc;
-                    div_count_reg     <= div_count_reg - 1'b1;
-
-                    if (div_count_reg == 6'd1) begin
-                        scale_x_q16_reg <= div_quotient_next_calc;
-                        state_reg       <= S_DIV_Y_INIT;
+                S_GEOM_WAIT: begin
+                    if (geom_error) begin
+                        error <= 1'b1;
+                        state_reg <= S_IDLE;
+                    end else if (geom_ready) begin
+                        step_x_x_reg <= geom_step_x_x;
+                        step_y_x_reg <= geom_step_y_x;
+                        step_x_y_reg <= geom_step_x_y;
+                        step_y_y_reg <= geom_step_y_y;
+                        row0_x_base_reg <= geom_row0_x;
+                        row0_y_base_reg <= geom_row0_y;
+                        cfg_src_x_last_reg <= geom_src_x_last;
+                        cfg_src_y_last_reg <= geom_src_y_last;
+                        cfg_src_x_max_q16_reg <= geom_src_x_max_q16;
+                        cfg_src_y_max_q16_reg <= geom_src_y_max_q16;
+                        state_reg <= S_PRECALC_INIT;
                     end
                 end
 
-                // 计算缩放因子除法初始化
-                S_DIV_Y_INIT: begin
-                    div_dividend_reg  <= 32'sh0001_0000 * $signed({1'b0, cfg_src_h_reg});
-                    div_divisor_reg   <= {16'd0, cfg_dst_h_reg};
-                    div_quotient_reg  <= '0;
-                    div_remainder_reg <= '0;
-                    div_count_reg     <= 6'd32;
-                    state_reg         <= S_DIV_Y_RUN;
-                end
-
-                // 计算缩放因子
-                S_DIV_Y_RUN: begin
-                    div_dividend_reg  <= div_dividend_next_calc;
-                    div_quotient_reg  <= div_quotient_next_calc;
-                    div_remainder_reg <= div_remainder_next_calc;
-                    div_count_reg     <= div_count_reg - 1'b1;
-
-                    if (div_count_reg == 6'd1) begin
-                        scale_y_q16_reg <= div_quotient_next_calc;
-                        state_reg       <= S_CENTER;
-                    end
-                end
-
-                // 计算旋转中心
-                S_CENTER: begin
-                    src_cx_q16_reg <= ($signed({1'b0, cfg_src_w_reg}) - 1) <<< (FRAC_W-1);
-                    src_cy_q16_reg <= ($signed({1'b0, cfg_src_h_reg}) - 1) <<< (FRAC_W-1);
-                    dst_cx_q16_reg <= ($signed({1'b0, cfg_dst_w_reg}) - 1) <<< (FRAC_W-1);
-                    dst_cy_q16_reg <= ($signed({1'b0, cfg_dst_h_reg}) - 1) <<< (FRAC_W-1);
-                    row0_src_cx_hold_reg <= ($signed({1'b0, cfg_src_w_reg}) - 1) <<< (FRAC_W-1);
-                    row0_src_cy_hold_reg <= ($signed({1'b0, cfg_src_h_reg}) - 1) <<< (FRAC_W-1);
-                    row0_dst_cx_hold_reg <= ($signed({1'b0, cfg_dst_w_reg}) - 1) <<< (FRAC_W-1);
-                    row0_dst_cy_hold_reg <= ($signed({1'b0, cfg_dst_h_reg}) - 1) <<< (FRAC_W-1);
-                    state_reg           <= S_STEP_XX;
-                end
-
-                // 计算步进量：当输出图x加1时，源图坐标x增量step_x_x
-                S_STEP_XX: begin
-                    step_x_x_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_x_q16_reg)) >>> FRAC_W;
-                    row0_step_x_x_hold_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_x_q16_reg)) >>> FRAC_W;
-                    state_reg    <= S_STEP_YX_MUL;
-                end
-
-                // 计算步进量：当输出图x加1时，源图坐标y增量step_y_x的乘法中间结果
-                // 有负号加入，故插入一级流水
-                S_STEP_YX_MUL: begin
-                    step_y_x_mul_reg <= $signed(cfg_angle_sin_q16_reg) * $signed(scale_x_q16_reg);
-                    state_reg        <= S_STEP_YX;
-                end
-
-                // 计算步进量：当输出图x加1时，源图坐标y增量step_y_x
-                S_STEP_YX: begin
-                    step_y_x_reg <= -($signed(step_y_x_mul_reg) >>> FRAC_W);
-                    row0_step_y_x_hold_reg <= -($signed(step_y_x_mul_reg) >>> FRAC_W);
-                    state_reg <= S_STEP_XY;
-                end
-
-                // 计算步进量：当输出图y加1时，源图坐标x增量step_x_y
-                S_STEP_XY: begin
-                    step_x_y_reg <= ($signed(cfg_angle_sin_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
-                    row0_step_x_y_hold_reg <= ($signed(cfg_angle_sin_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
-                    state_reg    <= S_STEP_YY;
-                end
-
-                // 计算步进量：当输出图y加1时，源图坐标x增量step_y_y
-                S_STEP_YY: begin
-                    step_y_y_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
-                    row0_step_y_y_hold_reg <= ($signed(cfg_angle_cos_q16_reg) * $signed(scale_y_q16_reg)) >>> FRAC_W;
-                    state_reg    <= S_ROW0_X_PREP;
-                end
-
-                // 下面几个状态计算第0行第0列的目标像素对应源图坐标，作为后续计算基点
-                S_ROW0_X_PREP: begin
-                    row0_x_dst_cx_mul_reg   <= row0_dst_cx_hold_reg;
-                    row0_x_dst_cy_mul_reg   <= row0_dst_cy_hold_reg;
-                    row0_x_step_x_x_mul_reg <= row0_step_x_x_hold_reg;
-                    row0_x_step_x_y_mul_reg <= row0_step_x_y_hold_reg;
-                    state_reg               <= S_ROW0_X_MUL;
-                end
-
-                S_ROW0_X_MUL: begin
-                    row0_x_mul0_reg <= $signed(row0_x_dst_cx_mul_reg) * $signed(row0_x_step_x_x_mul_reg);
-                    row0_x_mul1_reg <= $signed(row0_x_dst_cy_mul_reg) * $signed(row0_x_step_x_y_mul_reg);
-                    state_reg       <= S_ROW0_X_SUM;
-                end
-
-                S_ROW0_X_SUM: begin
-                    row0_x_base_wide_reg <= $signed(row0_src_cx_hold_reg)
-                        - $signed(row0_x_mul0_reg >>> FRAC_W)
-                        - $signed(row0_x_mul1_reg >>> FRAC_W);
-                    state_reg <= S_ROW0_X_COMMIT;
-                end
-
-                S_ROW0_X_COMMIT: begin
-                    state_reg <= S_ROW0_Y_MUL;
-                end
-
-                S_ROW0_Y_MUL: begin
-                    row0_y_mul0_reg <= $signed(row0_dst_cx_hold_reg) * $signed(row0_step_y_x_hold_reg);
-                    row0_y_mul1_reg <= $signed(row0_dst_cy_hold_reg) * $signed(row0_step_y_y_hold_reg);
-                    state_reg       <= S_ROW0_Y_SUM;
-                end
-
-                S_ROW0_Y_SUM: begin
-                    row0_y_base_wide_reg <= $signed(row0_src_cy_hold_reg)
-                        - $signed(row0_y_mul0_reg >>> FRAC_W)
-                        - $signed(row0_y_mul1_reg >>> FRAC_W);
-                    state_reg <= S_ROW0_Y_COMMIT;
-                end
-
-                S_ROW0_Y_COMMIT: begin
-                    state_reg <= S_PRECALC_INIT;
-                end
-
-                // 先把每一行的第一个起始源图坐标算出来，存到ram里
                 S_PRECALC_INIT: begin
+                // 先把每一行的第一个起始源图坐标算出来，存到ram里
                     precalc_base_x_reg  <= row0_x_base_reg;
                     precalc_base_y_reg  <= row0_y_base_reg;
                     precalc_idx_reg     <= '0;

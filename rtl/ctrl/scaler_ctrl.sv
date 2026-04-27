@@ -29,6 +29,7 @@ module scaler_ctrl #(
     input  logic                                             core_busy,
     input  logic                                             core_done,
     input  logic                                             core_error,
+    input  logic                                             cache_error,
     input  logic                                             row_done,
 
     output logic                           wb_start,
@@ -94,7 +95,7 @@ module scaler_ctrl #(
             end
 
             S_RUN: begin
-                if (core_error || wb_error || write_error) begin
+                if (core_error || cache_error || wb_error || write_error) begin
                     state_next = S_ERROR;
                 end else if (final_write_done) begin
                     state_next = S_DONE;

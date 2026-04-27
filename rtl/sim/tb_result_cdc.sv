@@ -32,12 +32,13 @@ module tb_result_cdc;
 
     result_cdc dut (
         .src_clk(src_clk),
-        .sys_rst(sys_rst),
+        .src_rst(sys_rst),
         .result_valid_src(result_valid_src),
         .result_done_src(result_done_src),
         .result_error_src(result_error_src),
         .result_ready_src(result_ready_src),
         .dst_clk(dst_clk),
+        .dst_rst(sys_rst),
         .result_valid_dst(result_valid_dst),
         .result_done_dst(result_done_dst),
         .result_error_dst(result_error_dst)

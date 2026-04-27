@@ -1,0 +1,4 @@
+image_geo_top RTL elaboration completed.
+Mode: rtl
+Small config: 1
+Note: report_cdc/report_timing_summary require a synthesized design and are not emitted in rtl mode.

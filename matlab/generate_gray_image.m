@@ -1,4 +1,4 @@
-function [img, meta] = generate_gray_image(width, height, pattern, out_prefix)
+function [img, meta] = generate_gray_image(width, height, pattern, out_prefix, varargin)
 %GENERATE_GRAY_IMAGE Generate an 8-bit grayscale image and export DDR-friendly files.
 %   [IMG, META] = GENERATE_GRAY_IMAGE(WIDTH, HEIGHT, PATTERN, OUT_PREFIX)
 %   creates a HEIGHT x WIDTH uint8 image with pixels in [0,255].
@@ -11,9 +11,11 @@ function [img, meta] = generate_gray_image(width, height, pattern, out_prefix)
 %   3) <OUT_PREFIX>.bin
 %      Raw bytes for PS DDR. Layout is row-major, 1 byte per pixel:
 %      byte offset = y * width + x, with x in [0,width-1], y in [0,height-1]
-%   4) <OUT_PREFIX>.coe
+%   4) <OUT_PREFIX>.txt
+%      Row-major hex dump that exactly matches the .bin byte order.
+%   5) <OUT_PREFIX>.coe
 %      Optional BRAM/ROM initialization text in hexadecimal byte format.
-%   5) <OUT_PREFIX>_meta.txt
+%   6) <OUT_PREFIX>_meta.txt
 %      Basic metadata for software/RTL integration.
 %
 %   PATTERN options:
@@ -28,8 +30,15 @@ function [img, meta] = generate_gray_image(width, height, pattern, out_prefix)
 %   - "diagonal_ramp"
 %   - "constant"
 %
+%   Name/value options:
+%   - "WritePreview" true/false, default true.
+%   - "WriteCoe" true/false, default true.
+%   - "WritePixelTxt" true/false, default true.
+%   - "Seed" integer or [], default []. Set it to reproduce random patterns.
+%
 %   Example:
-%       [img, meta] = generate_gray_image(640, 480, "horizontal_gradient", "out/test_640x480");
+%       [img, meta] = generate_gray_image(640, 480, "horizontal_gradient", ...
+%           "out/ddr_input/input", "WritePreview", false, "WriteCoe", false);
 
     if nargin < 1 || isempty(width)
         width = 640;
@@ -44,6 +53,15 @@ function [img, meta] = generate_gray_image(width, height, pattern, out_prefix)
         out_prefix = sprintf("out/img_%dx%d", width, height);
     end
 
+    parser = inputParser;
+    parser.FunctionName = 'generate_gray_image';
+    addParameter(parser, 'WritePreview', true);
+    addParameter(parser, 'WriteCoe', true);
+    addParameter(parser, 'WritePixelTxt', true);
+    addParameter(parser, 'Seed', []);
+    parse(parser, varargin{:});
+    opts = parser.Results;
+
     validateattributes(width,  {'numeric'}, {'scalar', 'integer', 'positive'});
     validateattributes(height, {'numeric'}, {'scalar', 'integer', 'positive'});
 
@@ -55,20 +73,36 @@ function [img, meta] = generate_gray_image(width, height, pattern, out_prefix)
         mkdir(out_dir);
     end
 
+    if ~isempty(opts.Seed)
+        validateattributes(opts.Seed, {'numeric'}, {'scalar', 'integer', 'nonnegative'});
+        rng(double(opts.Seed));
+    end
+
     img = build_pattern(width, height, pattern);
     img = uint8(img);
 
     png_path     = out_prefix + ".png";
-    preview_path = out_prefix + "_preview.png";
+    preview_path = "";
     bin_path     = out_prefix + ".bin";
-    coe_path     = out_prefix + ".coe";
+    coe_path     = "";
+    pixel_txt_path = "";
     meta_path    = out_prefix + "_meta.txt";
 
     imwrite(img, png_path);
-    imwrite(make_preview_with_legend(img), preview_path);
     write_raw_bin(img, bin_path);
-    write_coe(img, coe_path);
-    write_meta(width, height, pattern, png_path, preview_path, bin_path, coe_path, meta_path);
+    if opts.WritePixelTxt
+        pixel_txt_path = out_prefix + ".txt";
+        write_pixel_txt(img, pixel_txt_path);
+    end
+    if opts.WritePreview
+        preview_path = out_prefix + "_preview.png";
+        imwrite(make_preview_with_legend(img), preview_path);
+    end
+    if opts.WriteCoe
+        coe_path = out_prefix + ".coe";
+        write_coe(img, coe_path);
+    end
+    write_meta(width, height, pattern, opts.Seed, png_path, preview_path, bin_path, coe_path, pixel_txt_path, meta_path);
 
     meta = struct();
     meta.width = width;
@@ -76,7 +110,10 @@ function [img, meta] = generate_gray_image(width, height, pattern, out_prefix)
     meta.pixel_bits = 8;
     meta.total_bytes = width * height;
     meta.layout = 'row-major';
+    meta.pattern = char(pattern);
+    meta.seed = opts.Seed;
     meta.bin_path = char(bin_path);
+    meta.pixel_txt_path = char(pixel_txt_path);
     meta.png_path = char(png_path);
     meta.preview_path = char(preview_path);
     meta.coe_path = char(coe_path);
@@ -290,7 +327,28 @@ function write_coe(img, coe_path)
     end
 end
 
-function write_meta(width, height, pattern, png_path, preview_path, bin_path, coe_path, meta_path)
+function write_pixel_txt(img, txt_path)
+% One row per image row, one two-digit hex byte per pixel.
+% This is exactly the same row-major byte order as the .bin file.
+    fid = fopen(txt_path, 'w');
+    assert(fid >= 0, 'Failed to open %s for writing.', txt_path);
+    cleaner = onCleanup(@() fclose(fid));
+
+    [height, width] = size(img);
+    fprintf(fid, '# format=row-major uint8 grayscale, hex byte per pixel\n');
+    fprintf(fid, '# width=%d height=%d byte_offset=y*width+x\n', width, height);
+    for y = 1:height
+        for x = 1:width
+            if x < width
+                fprintf(fid, '%02X ', img(y, x));
+            else
+                fprintf(fid, '%02X\n', img(y, x));
+            end
+        end
+    end
+end
+
+function write_meta(width, height, pattern, seed, png_path, preview_path, bin_path, coe_path, pixel_txt_path, meta_path)
     fid = fopen(meta_path, 'w');
     assert(fid >= 0, 'Failed to open %s for writing.', meta_path);
     cleaner = onCleanup(@() fclose(fid));
@@ -300,12 +358,19 @@ function write_meta(width, height, pattern, png_path, preview_path, bin_path, co
     fprintf(fid, 'pixel_bits=8\n');
     fprintf(fid, 'pixel_range=0..255\n');
     fprintf(fid, 'pattern=%s\n', pattern);
+    if isempty(seed)
+        fprintf(fid, 'seed=\n');
+    else
+        fprintf(fid, 'seed=%d\n', seed);
+    end
     fprintf(fid, 'storage=row-major\n');
     fprintf(fid, 'bytes_per_pixel=1\n');
     fprintf(fid, 'total_bytes=%d\n', width * height);
     fprintf(fid, 'png_path=%s\n', png_path);
     fprintf(fid, 'preview_path=%s\n', preview_path);
     fprintf(fid, 'bin_path=%s\n', bin_path);
+    fprintf(fid, 'pixel_txt_path=%s\n', pixel_txt_path);
     fprintf(fid, 'coe_path=%s\n', coe_path);
     fprintf(fid, 'ddr_offset_formula=addr_base + y * width + x\n');
+    fprintf(fid, 'pixel_txt_format=one image row per line, two-digit hex byte per pixel, same order as bin\n');
 end
